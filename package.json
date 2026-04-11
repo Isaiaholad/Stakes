@@ -24,5 +24,8 @@
     "contracts:deploy:username-registry": "npm run deploy:username-registry --workspace @stakewithfriends/contracts",
     "build": "npm run build:web",
     "test": "npm run contracts:test && npm run test:api && npm run test:web"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.0.0"
   }
 }
