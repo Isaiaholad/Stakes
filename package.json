@@ -1,0 +1,28 @@
+{
+  "name": "stakewithfriends",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22 <24"
+  },
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "contracts"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @stakewithfriends/web",
+    "dev:api": "npm run dev --workspace @stakewithfriends/api",
+    "api:indexer": "npm run indexer --workspace @stakewithfriends/api",
+    "api:indexer:once": "npm run indexer:once --workspace @stakewithfriends/api",
+    "build:web": "npm run build --workspace @stakewithfriends/web",
+    "test:web": "npm run test --workspace @stakewithfriends/web",
+    "test:api": "npm run test --workspace @stakewithfriends/api",
+    "contracts:compile": "npm run compile --workspace @stakewithfriends/contracts",
+    "contracts:test": "npm run test --workspace @stakewithfriends/contracts",
+    "contracts:deploy": "npm run deploy --workspace @stakewithfriends/contracts",
+    "contracts:deploy:username-registry": "npm run deploy:username-registry --workspace @stakewithfriends/contracts",
+    "build": "npm run build:web",
+    "test": "npm run contracts:test && npm run test:api && npm run test:web"
+  }
+}

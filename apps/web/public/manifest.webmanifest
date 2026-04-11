@@ -1,0 +1,24 @@
+{
+  "name": "StakeWithFriends",
+  "short_name": "StakeFriends",
+  "description": "Wallet-native 1v1 USDC pacts on Monad testnet with a simple escrow flow and installable mobile UX.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f6f2",
+  "theme_color": "#10121a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
