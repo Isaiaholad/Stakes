@@ -7,3 +7,8 @@ contracts/cache/
 .env
 .env.local
 .DS_Store
+
+# SQLite databases (runtime data, not source code)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
