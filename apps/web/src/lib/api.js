@@ -20,7 +20,11 @@ export async function fetchJson(pathname, options = {}) {
   const payload = contentType.includes('application/json') ? await response.json() : null;
 
   if (!response.ok) {
-    const error = new Error(payload?.error || `Request failed with status ${response.status}.`);
+    let errorMessage = `Request failed with status ${response.status}.`;
+    if (payload?.error) {
+      errorMessage = typeof payload.error === 'string' ? payload.error : (payload.error.message || JSON.stringify(payload.error));
+    }
+    const error = new Error(errorMessage);
     error.status = response.status;
     error.payload = payload;
     throw error;

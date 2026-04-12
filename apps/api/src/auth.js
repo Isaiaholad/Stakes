@@ -41,14 +41,14 @@ function parseCookies(cookieHeader = '') {
 
 export function createSessionCookie(sessionId, expiresAt, secure = apiConfig.sessionCookieSecure) {
   const secureFlag = secure ? '; Secure' : '';
-  return `${sessionCookieName}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Expires=${new Date(
+  return `${sessionCookieName}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=None${secureFlag}; Expires=${new Date(
     expiresAt
   ).toUTCString()}`;
 }
 
 export function clearSessionCookie(secure = apiConfig.sessionCookieSecure) {
   const secureFlag = secure ? '; Secure' : '';
-  return `${sessionCookieName}=; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Expires=${new Date(0).toUTCString()}`;
+  return `${sessionCookieName}=; Path=/; HttpOnly; SameSite=None${secureFlag}; Expires=${new Date(0).toUTCString()}`;
 }
 
 export async function createNonceChallenge(address) {
