@@ -61,6 +61,18 @@ function readJsonBody(request) {
   });
 }
 
+function getCorsHeaders(request) {
+  const origin = request.headers.origin || '';
+  const allowedOrigin = apiConfig.allowedOrigin === '*' ? (origin || '*') : apiConfig.allowedOrigin;
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept',
+    'Access-Control-Max-Age': '86400'
+  };
+}
+
 function writeJson(response, statusCode, payload, headers = {}) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -637,6 +649,18 @@ async function handleEvidenceMetadata(request, response) {
 async function requestHandler(request, response) {
   cleanupExpiredAuthRecords();
   const url = new URL(request.url || '/', `http://${request.headers.host || `${apiConfig.host}:${apiConfig.port}`}`);
+  const corsHeaders = getCorsHeaders(request);
+
+  // Inject CORS headers into every response automatically
+  const originalWriteHead = response.writeHead.bind(response);
+  response.writeHead = (statusCode, headers = {}) => originalWriteHead(statusCode, { ...corsHeaders, ...headers });
+
+  // Handle CORS preflight for all routes
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204);
+    response.end();
+    return;
+  }
 
   try {
     if (request.method === 'GET' && url.pathname === '/api/health/startup') {
@@ -719,13 +743,9 @@ async function requestHandler(request, response) {
       return;
     }
 
-    writeJson(response, 404, {
-      error: 'Route not found.'
-    });
+    writeJson(response, 404, { error: 'Route not found.' }, corsHeaders);
   } catch (error) {
-    writeJson(response, 500, {
-      error: error?.message || 'Unexpected API error.'
-    });
+    writeJson(response, 500, { error: error?.message || 'Unexpected API error.' }, corsHeaders);
   }
 }
 

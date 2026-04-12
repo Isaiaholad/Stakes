@@ -94,6 +94,7 @@ export const apiConfig = {
   zeroAddress,
   host: getEnv('API_HOST', '127.0.0.1'),
   port: parseInteger(getEnv('API_PORT', 8787), 8787),
+  allowedOrigin: getEnv('ALLOWED_ORIGIN', '*'),
   databasePath: path.resolve(apiRoot, getEnv('DATABASE_PATH', 'data/stakewithfriends.sqlite')),
   rpcUrl: normalizeRpcUrl(getEnv('MONAD_RPC_URL', getEnv('VITE_RPC_URL', 'https://testnet-rpc.monad.xyz'))),
   chainId: parseInteger(getEnv('CHAIN_ID', getEnv('VITE_CHAIN_ID', 10143)), 10143),
