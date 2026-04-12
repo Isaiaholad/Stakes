@@ -4,10 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const rpcProxyTarget =
-    env.ARC_RPC_UPSTREAM_URL ||
-    env.MONAD_RPC_UPSTREAM_URL ||
-    'https://rpc.testnet.arc.network';
+  const rpcProxyTarget = env.ARC_RPC_UPSTREAM_URL || 'https://rpc.testnet.arc.network';
   const catboxProxyTarget = env.CATBOX_UPLOAD_UPSTREAM_URL || 'https://catbox.moe';
   const apiProxyTarget = env.VITE_API_UPSTREAM_URL || 'http://127.0.0.1:8787';
 

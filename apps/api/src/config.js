@@ -73,7 +73,7 @@ function defaultSessionCookieSecure(host) {
 
 function normalizeRpcUrl(value) {
   if (!value || String(value).startsWith('/')) {
-    return getEnv('ARC_RPC_UPSTREAM_URL', getEnv('MONAD_RPC_UPSTREAM_URL', 'https://rpc.testnet.arc.network'));
+    return getEnv('ARC_RPC_UPSTREAM_URL', 'https://rpc.testnet.arc.network');
   }
 
   return value;
@@ -96,9 +96,7 @@ export const apiConfig = {
   port: parseInteger(getEnv('API_PORT', 8787), 8787),
   allowedOrigin: getEnv('ALLOWED_ORIGIN', '*'),
   databasePath: path.resolve(apiRoot, getEnv('DATABASE_PATH', 'data/stakewithfriends.sqlite')),
-  rpcUrl: normalizeRpcUrl(
-    getEnv('ARC_RPC_URL', getEnv('MONAD_RPC_URL', getEnv('VITE_RPC_URL', 'https://rpc.testnet.arc.network')))
-  ),
+  rpcUrl: normalizeRpcUrl(getEnv('ARC_RPC_URL', getEnv('VITE_RPC_URL', 'https://rpc.testnet.arc.network'))),
   chainId: parseInteger(getEnv('CHAIN_ID', getEnv('VITE_CHAIN_ID', 5042002)), 5042002),
   embedIndexer: parseBoolean(getEnv('EMBED_INDEXER', 'true'), true),
   coreSyncMode: getEnv('CORE_SYNC_MODE', 'state-snapshot'),
