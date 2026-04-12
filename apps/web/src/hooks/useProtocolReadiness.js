@@ -61,11 +61,11 @@ function getSummary(query) {
     const canRead = canServeIndexedReads(query);
     if (canRead) {
       return lag
-        ? `The indexed API is serving delayed reads while the core sync catches up with Monad testnet and is ${lag} blocks behind.`
+        ? `The indexed API is serving delayed reads while the core sync catches up with Arc Testnet and is ${lag} blocks behind.`
         : 'The indexed API is serving delayed reads while the core sync finishes warming up.';
     }
 
-    return lag ? `The API indexer is still catching up with Monad testnet and is ${lag} blocks behind.` : 'The API indexer is still warming up.';
+    return lag ? `The API indexer is still catching up with Arc Testnet and is ${lag} blocks behind.` : 'The API indexer is still warming up.';
   }
 
   if (!query.data?.storageOk) {
@@ -74,7 +74,7 @@ function getSummary(query) {
 
   const lag = Number(query.data?.syncLagBlocks || 0);
   if (lag > 0 && canServeIndexedReads(query)) {
-    return `Live indexed reads are available while the core sync trails Monad testnet by ${lag} blocks. Fresh feed updates can take a moment to appear on a fast chain.`;
+    return `Live indexed reads are available while the core sync trails Arc Testnet by ${lag} blocks. Fresh feed updates can take a moment to appear on a fast chain.`;
   }
 
   return '';

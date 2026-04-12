@@ -1,6 +1,6 @@
 # StakeWithFriends
 
-StakeWithFriends is a mobile-first PWA for simple 1v1 USDC pacts on Monad testnet. Users fund a vault, create or join a pact, declare a result, and resolve payouts on-chain.
+StakeWithFriends is a mobile-first PWA for simple 1v1 USDC pacts on Arc Testnet. Users fund a vault, create or join a pact, declare a result, and resolve payouts on-chain.
 
 Use Node.js 20 or 22 LTS for local development and CI.
 
@@ -8,7 +8,7 @@ Use Node.js 20 or 22 LTS for local development and CI.
 
 - React + Vite + Tailwind
 - Wallet-native auth with injected wallets
-- `viem` for Monad testnet reads and writes
+- `viem` for Arc Testnet reads and writes
 - Hardhat contract workspace
 - On-chain username registry for `@username` invites
 - Catbox uploads for dispute-proof links
@@ -35,7 +35,7 @@ stakewithfriends
 └── package-lock.json
 ```
 
-`MockStablecoin.sol` is kept only for local contract tests. The deployment flow uses an existing Monad testnet USDC address.
+`MockStablecoin.sol` is kept only for local contract tests. The deployment flow uses the Arc Testnet USDC ERC-20 interface address.
 
 ## Quick Start
 
@@ -53,7 +53,7 @@ cp contracts/.env.example contracts/.env
 cp apps/api/.env.example apps/api/.env
 ```
 
-3. Add your Monad testnet values and deployed addresses.
+3. Add your Arc Testnet values and deployed addresses.
 
 4. Run the app.
 
@@ -98,16 +98,16 @@ npm run contracts:deploy:username-registry
 ### `apps/web/.env`
 
 ```env
-VITE_CHAIN_ID=10143
-VITE_RPC_URL=/rpc/monad
-VITE_STABLECOIN_ADDRESS=0xYourStablecoinAddress
+VITE_CHAIN_ID=5042002
+VITE_RPC_URL=/rpc/arc
+VITE_STABLECOIN_ADDRESS=0x3600000000000000000000000000000000000000
 VITE_PROTOCOL_CONTROL_ADDRESS=0xYourProtocolControlAddress
 VITE_PACT_VAULT_ADDRESS=0xYourPactVaultAddress
 VITE_PACT_MANAGER_ADDRESS=0xYourPactManagerAddress
 VITE_SUBMISSION_MANAGER_ADDRESS=0xYourSubmissionManagerAddress
 VITE_PACT_RESOLUTION_MANAGER_ADDRESS=0xYourPactResolutionManagerAddress
 VITE_USERNAME_REGISTRY_ADDRESS=0xYourUsernameRegistryAddress
-MONAD_RPC_UPSTREAM_URL=https://testnet-rpc.monad.xyz
+ARC_RPC_UPSTREAM_URL=https://rpc.testnet.arc.network
 CATBOX_UPLOAD_UPSTREAM_URL=https://catbox.moe
 ```
 
@@ -116,10 +116,10 @@ CATBOX_UPLOAD_UPSTREAM_URL=https://catbox.moe
 ```env
 API_HOST=127.0.0.1
 API_PORT=8787
-MONAD_RPC_URL=https://testnet-rpc.monad.xyz
-CHAIN_ID=10143
+ARC_RPC_URL=https://rpc.testnet.arc.network
+CHAIN_ID=5042002
 EMBED_INDEXER=true
-STABLECOIN_ADDRESS=0xYourStablecoinAddress
+STABLECOIN_ADDRESS=0x3600000000000000000000000000000000000000
 PROTOCOL_CONTROL_ADDRESS=0xYourProtocolControlAddress
 PACT_VAULT_ADDRESS=0xYourPactVaultAddress
 PACT_MANAGER_ADDRESS=0xYourPactManagerAddress
@@ -135,9 +135,9 @@ AUTONOMOUS_KEEPER_BATCH_SIZE=25
 ### `contracts/.env`
 
 ```env
-MONAD_TESTNET_RPC_URL=https://testnet-rpc.monad.xyz
+ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
 PACT_ADMIN_ADDRESS=0xYourAdminWallet
-PACT_STABLECOIN_ADDRESS=0xYourStablecoinAddress
+PACT_STABLECOIN_ADDRESS=0x3600000000000000000000000000000000000000
 ```
 
 Supply `PRIVATE_KEY` only at runtime from your terminal or CI secret store, not from a repo-local env file.
@@ -146,12 +146,13 @@ Supply `PRIVATE_KEY` only at runtime from your terminal or CI secret store, not 
 
 ## Deployment Notes
 
-- Deploy contracts to Monad testnet first.
-- Reuse the live Monad testnet USDC address in `PACT_STABLECOIN_ADDRESS`.
-- Copy the deployed contract addresses into `apps/web/.env`.
-- Copy the same live contract addresses into `apps/api/.env` if you want indexed reads, chat, and autonomous settlement.
-- Keep `VITE_RPC_URL=/rpc/monad` so browser RPC reads stay same-origin.
-- `apps/web/vercel.json` already rewrites `/rpc/monad` and `/upload/catbox`.
+- Deploy contracts to Arc Testnet first.
+- Use the Arc Testnet USDC ERC-20 interface address in `PACT_STABLECOIN_ADDRESS`.
+- Copy the deployed Arc contract addresses into `apps/web/.env` and `apps/web/.env.production`.
+- Copy the same Arc contract addresses into `apps/api/.env` if you want indexed reads, chat, and autonomous settlement.
+- Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads stay same-origin.
+- `apps/web/vercel.json` already rewrites `/rpc/arc`, `/upload/catbox`, and `/api`.
+- On Vercel, set `API_UPSTREAM_URL` to the full API host (no path), so `/api/*` is proxied to your backend.
 - On Vercel, set the project root to `apps/web`, build with `npm run build`, and publish `dist`.
 - The web app does not need a private key on Vercel.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied at runtime.

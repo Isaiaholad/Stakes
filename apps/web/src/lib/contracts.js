@@ -10,8 +10,8 @@ const coreAddresses = {
 };
 
 export const protocolConfig = {
-  chainId: Number(env.VITE_CHAIN_ID || 10143),
-  rpcUrl: env.VITE_RPC_URL || env.VITE_BASE_RPC_URL || 'https://testnet-rpc.monad.xyz',
+  chainId: Number(env.VITE_CHAIN_ID || 5042002),
+  rpcUrl: env.VITE_RPC_URL || env.VITE_BASE_RPC_URL || 'https://rpc.testnet.arc.network',
   addresses: {
     ...coreAddresses,
     usernameRegistry: env.VITE_USERNAME_REGISTRY_ADDRESS || ''

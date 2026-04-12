@@ -7,7 +7,7 @@ async function main() {
   const stablecoinAddress = process.env.PACT_STABLECOIN_ADDRESS;
 
   if (!stablecoinAddress) {
-    throw new Error('PACT_STABLECOIN_ADDRESS is required. Supply the existing Monad testnet USDC address in contracts/.env.');
+    throw new Error('PACT_STABLECOIN_ADDRESS is required. Supply the Arc Testnet USDC ERC-20 interface address in contracts/.env.');
   }
 
   const ProtocolControl = await ethers.getContractFactory('ProtocolControl');

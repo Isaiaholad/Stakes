@@ -3,9 +3,10 @@ import { supportedChain, supportedChainParams } from './chains.js';
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
 const walletConnectRpcUrl =
+  import.meta.env.ARC_RPC_UPSTREAM_URL ||
   import.meta.env.MONAD_RPC_UPSTREAM_URL ||
   import.meta.env.VITE_BASE_RPC_URL ||
-  'https://testnet-rpc.monad.xyz';
+  'https://rpc.testnet.arc.network';
 
 let activeProvider = null;
 let activeConnector = null;
@@ -69,7 +70,7 @@ export async function getWalletConnectProvider() {
         events: ['chainChanged', 'accountsChanged', 'disconnect'],
         metadata: {
           name: 'StakeWithFriends',
-          description: 'Head-to-head escrow pacts on Monad testnet.',
+          description: 'Head-to-head escrow pacts on Arc Testnet.',
           url: typeof window !== 'undefined' ? window.location.origin : 'https://stakewithfriends.local',
           icons:
             typeof window !== 'undefined'

@@ -2,12 +2,12 @@ import { defineChain } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import { protocolConfig } from './contracts.js';
 
-const monadTestnet = defineChain({
-  id: 10143,
-  name: 'Monad Testnet',
+const arcTestnet = defineChain({
+  id: 5042002,
+  name: 'Arc Testnet',
   nativeCurrency: {
-    name: 'MON',
-    symbol: 'MON',
+    name: 'USDC',
+    symbol: 'USDC',
     decimals: 18
   },
   rpcUrls: {
@@ -18,16 +18,22 @@ const monadTestnet = defineChain({
       http: [protocolConfig.rpcUrl]
     }
   },
+  blockExplorers: {
+    default: {
+      name: 'ArcScan',
+      url: 'https://testnet.arcscan.app'
+    }
+  },
   testnet: true
 });
 
 const chainMap = {
-  10143: monadTestnet,
+  5042002: arcTestnet,
   8453: base,
   84532: baseSepolia
 };
 
-export const supportedChain = chainMap[protocolConfig.chainId] || monadTestnet;
+export const supportedChain = chainMap[protocolConfig.chainId] || arcTestnet;
 
 export const supportedChainParams = {
   chainId: `0x${supportedChain.id.toString(16)}`,

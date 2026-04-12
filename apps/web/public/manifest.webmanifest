@@ -1,7 +1,7 @@
 {
   "name": "StakeWithFriends",
   "short_name": "StakeFriends",
-  "description": "Wallet-native 1v1 USDC pacts on Monad testnet with a simple escrow flow and installable mobile UX.",
+  "description": "Wallet-native 1v1 USDC pacts on Arc Testnet with a simple escrow flow and installable mobile UX.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8f6f2",

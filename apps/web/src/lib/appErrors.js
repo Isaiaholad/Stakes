@@ -26,7 +26,7 @@ export function getReadableAppError(error, fallbackTitle = 'Could not load on-ch
     return {
       title: 'Live data delayed',
       message:
-        'StakeWithFriends could not refresh the latest indexed Monad testnet data right now. Your connection may still be fine, so try again in a moment.',
+        'StakeWithFriends could not refresh the latest indexed Arc Testnet data right now. Your connection may still be fine, so try again in a moment.',
       tone: 'warning'
     };
   }
@@ -57,7 +57,7 @@ export function getReadableAppError(error, fallbackTitle = 'Could not load on-ch
 
   return {
     title: fallbackTitle,
-    message: 'StakeWithFriends could not load the latest Monad testnet data right now. Please try again.',
+    message: 'StakeWithFriends could not load the latest Arc Testnet data right now. Please try again.',
     tone: 'error'
   };
 }

@@ -2,12 +2,16 @@
   "installCommand": "npm install && npm install --prefix apps/web @rollup/rollup-linux-x64-gnu --no-save",
   "rewrites": [
     {
-      "source": "/rpc/monad",
-      "destination": "https://testnet-rpc.monad.xyz"
+      "source": "/rpc/arc",
+      "destination": "https://rpc.testnet.arc.network"
     },
     {
       "source": "/upload/catbox",
       "destination": "https://catbox.moe/user/api.php"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://$API_UPSTREAM_URL/:path*"
     },
     {
       "source": "/create",

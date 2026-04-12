@@ -34,7 +34,7 @@ async function main() {
   const configuredFeeBps = parseFeeBps(process.env.PACT_FEE_BPS);
 
   if (!stablecoinAddress) {
-    throw new Error('PACT_STABLECOIN_ADDRESS is required. Supply the existing Monad testnet USDC address in contracts/.env.');
+    throw new Error('PACT_STABLECOIN_ADDRESS is required. Supply the Arc Testnet USDC ERC-20 interface address in contracts/.env.');
   }
 
   if (!ethers.isAddress(admin)) {
