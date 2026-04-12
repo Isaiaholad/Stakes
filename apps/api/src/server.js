@@ -469,7 +469,16 @@ async function handleMessagesPost(request, response, pactId) {
     return;
   }
 
-  const protocol = await readProtocolSnapshot(authorAddress);
+  let protocol;
+  try {
+    protocol = await readProtocolSnapshot(authorAddress);
+  } catch (error) {
+    writeJson(response, 503, {
+      error: 'Protocol reads are temporarily unavailable. Try again in a moment.'
+    });
+    return;
+  }
+
   const pact = await resolvePactAccessRecord(pactId);
   if (!pact) {
     writeJson(response, 404, {
@@ -745,6 +754,11 @@ async function requestHandler(request, response) {
 
     writeJson(response, 404, { error: 'Route not found.' }, corsHeaders);
   } catch (error) {
+    console.error('API request failed', {
+      method: request.method,
+      path: url.pathname,
+      error: error?.message || error
+    });
     writeJson(response, 500, { error: error?.message || 'Unexpected API error.' }, corsHeaders);
   }
 }

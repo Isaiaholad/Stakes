@@ -227,26 +227,30 @@ export async function readProtocolSnapshot(address) {
   }
 
   if (!cachedProtocolBase || Date.now() - cachedProtocolBaseAt > protocolSnapshotTtlMs) {
-    const [decimals, symbol, paused] = await Promise.all([
-      readContractWithRetry({
-        address: apiConfig.addresses.stablecoin,
-        abi: stablecoinAbi,
-        functionName: 'decimals'
-      }),
-      readContractWithRetry({
-        address: apiConfig.addresses.stablecoin,
-        abi: stablecoinAbi,
-        functionName: 'symbol'
-      }),
-      readContractWithRetry({
-        address: apiConfig.addresses.protocolControl,
-        abi: protocolControlAbi,
-        functionName: 'paused'
-      })
-    ]);
+    try {
+      const [decimals, symbol, paused] = await Promise.all([
+        readContractWithRetry({
+          address: apiConfig.addresses.stablecoin,
+          abi: stablecoinAbi,
+          functionName: 'decimals'
+        }),
+        readContractWithRetry({
+          address: apiConfig.addresses.stablecoin,
+          abi: stablecoinAbi,
+          functionName: 'symbol'
+        }),
+        readContractWithRetry({
+          address: apiConfig.addresses.protocolControl,
+          abi: protocolControlAbi,
+          functionName: 'paused'
+        })
+      ]);
 
-    cachedProtocolBase = { decimals, symbol, paused };
-    cachedProtocolBaseAt = Date.now();
+      cachedProtocolBase = { decimals, symbol, paused };
+      cachedProtocolBaseAt = Date.now();
+    } catch (error) {
+      cachedProtocolBase = cachedProtocolBase || { decimals: 6, symbol: 'USDC', paused: false };
+    }
   }
 
   if (!address) {
@@ -257,20 +261,27 @@ export async function readProtocolSnapshot(address) {
     };
   }
 
-  const [isArbiter, isAdmin] = await Promise.all([
-    readContractWithRetry({
-      address: apiConfig.addresses.protocolControl,
-      abi: protocolControlAbi,
-      functionName: 'hasRole',
-      args: [ARBITER_ROLE, address]
-    }),
-    readContractWithRetry({
-      address: apiConfig.addresses.protocolControl,
-      abi: protocolControlAbi,
-      functionName: 'hasRole',
-      args: [ADMIN_ROLE, address]
-    })
-  ]);
+  let isArbiter = false;
+  let isAdmin = false;
+  try {
+    [isArbiter, isAdmin] = await Promise.all([
+      readContractWithRetry({
+        address: apiConfig.addresses.protocolControl,
+        abi: protocolControlAbi,
+        functionName: 'hasRole',
+        args: [ARBITER_ROLE, address]
+      }),
+      readContractWithRetry({
+        address: apiConfig.addresses.protocolControl,
+        abi: protocolControlAbi,
+        functionName: 'hasRole',
+        args: [ADMIN_ROLE, address]
+      })
+    ]);
+  } catch (error) {
+    isArbiter = false;
+    isAdmin = false;
+  }
 
   return {
     ...cachedProtocolBase,
