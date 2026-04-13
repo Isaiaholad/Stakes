@@ -68,7 +68,7 @@ function getCorsHeaders(request) {
     'Access-Control-Allow-Origin': allowedOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Accept',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept, Authorization',
     'Access-Control-Max-Age': '86400'
   };
 }
@@ -102,6 +102,21 @@ function requireSession(request, response, message) {
     writeJson(response, 401, {
       error: message
     });
+    return null;
+  }
+
+  if (!session.address) {
+    destroySession(session.session_id);
+    writeJson(
+      response,
+      401,
+      {
+        error: message
+      },
+      {
+        'Set-Cookie': clearSessionCookie()
+      }
+    );
     return null;
   }
 
@@ -365,7 +380,8 @@ async function handleAuthVerify(request, response) {
     {
       authenticated: true,
       address: session.address,
-      expiresAt: session.expiresAt
+      expiresAt: session.expiresAt,
+      sessionId: session.sessionId
     },
     {
       'Set-Cookie': createSessionCookie(session.sessionId, session.expiresAt)

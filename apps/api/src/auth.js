@@ -39,16 +39,30 @@ function parseCookies(cookieHeader = '') {
     }, {});
 }
 
+function readBearerToken(request) {
+  const header = String(request.headers?.authorization || '').trim();
+  if (!header) {
+    return '';
+  }
+  const parts = header.split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer') {
+    return '';
+  }
+  return parts[1].trim();
+}
+
 export function createSessionCookie(sessionId, expiresAt, secure = apiConfig.sessionCookieSecure) {
   const secureFlag = secure ? '; Secure' : '';
-  return `${sessionCookieName}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=None${secureFlag}; Expires=${new Date(
+  const sameSite = secure ? 'None' : 'Lax';
+  return `${sessionCookieName}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=${sameSite}${secureFlag}; Expires=${new Date(
     expiresAt
   ).toUTCString()}`;
 }
 
 export function clearSessionCookie(secure = apiConfig.sessionCookieSecure) {
   const secureFlag = secure ? '; Secure' : '';
-  return `${sessionCookieName}=; Path=/; HttpOnly; SameSite=None${secureFlag}; Expires=${new Date(0).toUTCString()}`;
+  const sameSite = secure ? 'None' : 'Lax';
+  return `${sessionCookieName}=; Path=/; HttpOnly; SameSite=${sameSite}${secureFlag}; Expires=${new Date(0).toUTCString()}`;
 }
 
 export async function createNonceChallenge(address) {
@@ -148,8 +162,9 @@ export function destroySession(sessionId) {
 
 export function getSessionFromRequest(request) {
   cleanupExpiredAuthRecords();
+  const bearerSessionId = readBearerToken(request);
   const cookies = parseCookies(request.headers.cookie || '');
-  const sessionId = cookies[sessionCookieName];
+  const sessionId = bearerSessionId || cookies[sessionCookieName];
 
   if (!sessionId) {
     return null;

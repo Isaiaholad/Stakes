@@ -9,24 +9,39 @@ export async function readWalletSession() {
   return fetchJson('/auth/session');
 }
 
-async function createWalletSession(normalizedAddress) {
+async function createWalletSession(normalizedAddress, options = {}) {
   const challenge = await fetchJson('/auth/nonce', {
     method: 'POST',
     body: JSON.stringify({ address: normalizedAddress })
   });
   const signature = await signWalletMessage(normalizedAddress, challenge.message);
 
-  await fetchJson('/auth/verify', {
+  const verifyPayload = await fetchJson('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({
       address: normalizedAddress,
       signature
     })
   });
+  if (verifyPayload?.sessionId && typeof window !== 'undefined') {
+    window.localStorage?.setItem('swf_session_id', verifyPayload.sessionId);
+  }
 
-  const session = await readWalletSession();
+  let session = await readWalletSession();
   if (!session.authenticated || normalizeAddress(session.address) !== normalizedAddress) {
-    throw new Error('Wallet session could not be saved on this device. Try signing in again.');
+    // Give the browser a brief moment to persist the Set-Cookie header.
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    session = await readWalletSession();
+  }
+
+  if (!session.authenticated || normalizeAddress(session.address) !== normalizedAddress) {
+    if (options.allowUnauthenticated) {
+      return {
+        authenticated: false,
+        address: normalizedAddress
+      };
+    }
+    throw new Error('This browser did not keep the chat sign-in session. Allow cookies for this site, then try again.');
   }
 
   return session;
@@ -43,7 +58,7 @@ export async function ensureWalletSession(
   }
 
   if (options.forceRefresh) {
-    return createWalletSession(normalizedAddress);
+    return createWalletSession(normalizedAddress, options);
   }
 
   const currentSession = await readWalletSession();
@@ -51,5 +66,5 @@ export async function ensureWalletSession(
     return currentSession;
   }
 
-  return createWalletSession(normalizedAddress);
+  return createWalletSession(normalizedAddress, options);
 }

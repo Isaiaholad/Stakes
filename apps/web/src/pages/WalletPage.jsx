@@ -19,7 +19,7 @@ import {
 } from '../lib/pacts.js';
 import { useToastStore } from '../store/useToastStore.js';
 import { useWalletStore } from '../store/useWalletStore.js';
-import { formatUnits, maxUint256, parseUnits } from 'viem';
+import { parseUnits } from 'viem';
 
 function getReceiptStatusMessage(receipt) {
   if (!receipt) {
@@ -203,8 +203,6 @@ export default function WalletPage() {
   const tokenStep = decimals > 0 ? `0.${'0'.repeat(Math.max(decimals - 1, 0))}1` : '1';
   const depositParse = depositAmount && query.data ? parseTokenUnits(depositAmount || '0', decimals) : { units: 0n, valid: true };
   const rawAllowance = query.data?.allowance ?? 0n;
-  const hasUnlimitedAllowance = BigInt(rawAllowance || 0) === maxUint256;
-  const allowanceFormatted = query.data ? formatUnits(BigInt(rawAllowance || 0), decimals) : '0';
   const depositNeedsApproval = query.data ? BigInt(rawAllowance || 0) < depositParse.units : true;
   const depositButtonLabel = depositMutation.isPending
     ? depositFlowStep === 'approving'
@@ -280,27 +278,6 @@ export default function WalletPage() {
         <p className="mt-3 text-sm text-sand/70">
           Reserved: {formatToken(query.data.reservedBalance, query.data.symbol)} | Wallet: {formatToken(query.data.walletBalance, query.data.symbol)}
         </p>
-      </section>
-
-      <section className="rounded-[32px] bg-white/85 p-5 shadow-glow">
-        <p className="font-display text-2xl text-ink">Vault access</p>
-        <p className="mt-2 text-sm text-slate/70">
-          Your first deposit needs token approval once. After that, you can keep topping up the vault without repeating the same step every time.
-        </p>
-        <div className="mt-4 rounded-[24px] bg-sand/70 p-4 text-sm text-slate/75">
-          <p>
-            <strong>Current allowance:</strong>{' '}
-            {hasUnlimitedAllowance ? 'Unlimited vault access approved' : formatToken(allowanceFormatted, query.data.symbol)}
-          </p>
-          <p className="mt-1">
-            <strong>Status:</strong>{' '}
-            {hasUnlimitedAllowance
-              ? 'You do not need to approve again unless you revoke access in your wallet.'
-              : depositNeedsApproval
-                ? 'Your next deposit needs approval before the vault can pull tokens from your wallet.'
-                : 'Your current allowance already covers the deposit amount below.'}
-          </p>
-        </div>
       </section>
 
       <section className="rounded-[32px] bg-white/85 p-5 shadow-glow">

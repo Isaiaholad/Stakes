@@ -5,11 +5,21 @@ function joinUrl(pathname) {
   return `${apiBaseUrl}${normalizedPath}`;
 }
 
+function readSessionToken() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return window.localStorage?.getItem('swf_session_id') || '';
+}
+
 export async function fetchJson(pathname, options = {}) {
+  const sessionToken = readSessionToken();
   const response = await fetch(joinUrl(pathname), {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {})
     },

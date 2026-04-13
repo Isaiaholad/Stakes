@@ -54,7 +54,9 @@ export async function appendPactComment({ pactId, address, message }) {
     throw new Error('A connected wallet and comment message are required.');
   }
 
-  await ensureWalletSession(address, 'Connect your wallet before posting to pact chat.');
+  await ensureWalletSession(address, 'Connect your wallet before posting to pact chat.', {
+    allowUnauthenticated: true
+  });
   let payload;
   try {
     payload = await fetchJson(`/pacts/${pactId}/messages`, {
@@ -74,14 +76,22 @@ export async function appendPactComment({ pactId, address, message }) {
     }
 
     await ensureWalletSession(address, 'Connect your wallet before posting to pact chat.', {
-      forceRefresh: true
+      forceRefresh: true,
+      allowUnauthenticated: true
     });
-    payload = await fetchJson(`/pacts/${pactId}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({
-        body: trimmedMessage
-      })
-    });
+    try {
+      payload = await fetchJson(`/pacts/${pactId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+          body: trimmedMessage
+        })
+      });
+    } catch (retryError) {
+      if (Number(retryError?.status || 0) === 401) {
+        throw new Error('Chat sign-in could not be stored. Allow cookies for this site, then try again.');
+      }
+      throw retryError;
+    }
   }
 
   return {
