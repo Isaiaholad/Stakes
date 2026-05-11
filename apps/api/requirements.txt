@@ -1,0 +1,1 @@
+efootball-ocr==1.0.0

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import StatusBadge from '../../components/StatusBadge.jsx';
 import { formatDateTime, formatToken } from '../../lib/formatters.js';
+import { buildPactPath } from '../../lib/pactIds.js';
 import {
   getDeclarationSummary,
   getDisputeProofState,
@@ -20,6 +21,7 @@ function AdminActionStrip({
   const {
     creatorHasEvidence,
     counterpartyHasEvidence,
+    hasStoredUploads,
     adminReviewReady,
     disputeTimeoutAt
   } = getDisputeTiming(pact.id, pact);
@@ -29,9 +31,11 @@ function AdminActionStrip({
       <div className="mt-4 rounded-[22px] border border-amber-200 bg-amber-50 p-4">
         <p className="text-xs uppercase tracking-[0.2em] text-slate/55">Resolution</p>
         <p className="mt-2 text-sm text-amber-950">
-          {!creatorHasEvidence && !counterpartyHasEvidence
-            ? 'At least one side must submit dispute proof before this pact can be resolved.'
-            : 'At least one side has submitted proof. Resolve the final outcome from here.'}
+          {creatorHasEvidence || counterpartyHasEvidence
+            ? 'At least one participant has submitted proof on-chain. Resolve the final outcome from here.'
+            : hasStoredUploads
+              ? 'Files are uploaded, but no participant has submitted dispute proof on-chain yet. Ask one participant to open the pact and click Submit dispute proof before admin resolution.'
+              : 'At least one participant must submit dispute proof on-chain before this pact can be resolved.'}
         </p>
         <input
           value={resolutionRef}
@@ -113,7 +117,7 @@ function AdminActionStrip({
           disabled={settleMutation.isPending}
           className="mt-3 w-full rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
         >
-          {settleMutation.isPending ? 'Settling...' : 'Settle outcome now'}
+          {settleMutation.isPending ? 'Settling...' : 'Settle timed-out outcome'}
         </button>
       </div>
     );
@@ -172,11 +176,21 @@ export default function AdminPactCard({
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-[22px] border border-slate/10 bg-white px-4 py-3 text-sm text-slate/75">
             <p className="font-semibold text-ink">Creator proof</p>
-            <p className="mt-1 break-words">{pact.creatorEvidence || 'No proof submitted yet.'}</p>
+            <p className="mt-1 break-words">
+              {pact.creatorOnChainEvidence || pact.creatorEvidence || 'No proof submitted yet.'}
+            </p>
+            {pact.creatorEvidence && !pact.creatorEvidenceOnChain ? (
+              <p className="mt-2 text-xs text-amber-700">Uploaded file only. Not on-chain yet.</p>
+            ) : null}
           </div>
           <div className="rounded-[22px] border border-slate/10 bg-white px-4 py-3 text-sm text-slate/75">
             <p className="font-semibold text-ink">Counterparty proof</p>
-            <p className="mt-1 break-words">{pact.counterpartyEvidence || 'No proof submitted yet.'}</p>
+            <p className="mt-1 break-words">
+              {pact.counterpartyOnChainEvidence || pact.counterpartyEvidence || 'No proof submitted yet.'}
+            </p>
+            {pact.counterpartyEvidence && !pact.counterpartyEvidenceOnChain ? (
+              <p className="mt-2 text-xs text-amber-700">Uploaded file only. Not on-chain yet.</p>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -196,7 +210,7 @@ export default function AdminPactCard({
         <p className="text-xs text-slate/55">
           Acceptance: {formatDateTime(pact.acceptanceDeadline)} · Result window: {formatDateTime(pact.submissionDeadline)}
         </p>
-        <Link to={`/pact/${pact.id}`} className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-sand">
+        <Link to={buildPactPath(pact.id)} className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-sand">
           Open pact
         </Link>
       </div>

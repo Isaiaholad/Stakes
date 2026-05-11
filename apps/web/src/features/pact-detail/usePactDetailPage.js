@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePrivy } from '@privy-io/react-auth';
 import { zeroAddress } from 'viem';
-import { isCatboxUploadConfigured } from '../../lib/catbox.js';
-import { readPactEvidenceHistory, uploadManagedEvidence } from '../../lib/evidence.js';
+import { analyzePactEvidence, readPactEvidenceHistory, uploadManagedEvidence, validateManagedEvidenceFile } from '../../lib/evidence.js';
+import { readWalletSession } from '../../lib/authSession.js';
 import { appendPactComment, getMaxPactCommentLength, readPactCommentThread } from '../../lib/pactComments.js';
 import {
   adminResolveSplit,
@@ -23,14 +24,15 @@ import {
 } from '../../lib/pacts.js';
 import { hasUsernameRegistryConfigured, isProtocolConfigured } from '../../lib/contracts.js';
 import { shortenAddress } from '../../lib/formatters.js';
+import { buildPactPath, parsePactPublicId } from '../../lib/pactIds.js';
+import { buildTransactionToast } from '../../lib/transactions.js';
 import { useNow } from '../../hooks/useNow.js';
 import { useProtocolReadiness } from '../../hooks/useProtocolReadiness.js';
 import { useToastStore } from '../../store/useToastStore.js';
 import {
   formatParticipantLabel,
   getFinalResultStatus,
-  getParticipantBadge,
-  getReceiptStatusMessage
+  getParticipantBadge
 } from './pactDetailUtils.js';
 
 function buildUploadId() {
@@ -54,12 +56,12 @@ function buildDeclarationOptionLabel({ isSelf, username, address }) {
 function getCommentFailureMessage(error, { isOpenPact = false } = {}) {
   const rawMessage = String(error?.message || '').trim();
 
-  if (/sign a wallet message before posting to pact chat/i.test(rawMessage)) {
-    return 'Pact chat now uses your wallet session. Approve the one-time signature for this device, then try posting again.';
+  if (/sign in with privy before (posting to pact chat|uploading or posting a comment)|sign a wallet message before posting to pact chat/i.test(rawMessage)) {
+    return 'Verify this wallet once, then post again. Chat uses the same wallet identity as your pact.';
   }
 
   if (/wallet session could not be saved on this device/i.test(rawMessage)) {
-    return 'This browser did not keep the chat sign-in session. Try the one-time wallet signature again, then post once more.';
+    return 'This browser did not keep the chat session. Verify this wallet again, then post once more.';
   }
 
   if (/pact not found/i.test(rawMessage)) {
@@ -75,9 +77,22 @@ function getCommentFailureMessage(error, { isOpenPact = false } = {}) {
   return rawMessage || 'Could not save this comment.';
 }
 
+function isImageEvidence(item) {
+  const uri = String(item?.url || item?.evidence_uri || item?.evidenceUri || '').trim();
+  const mimeType = String(item?.mimeType || item?.mime_type || '').toLowerCase();
+  return (
+    mimeType.startsWith('image/') ||
+    /^data:image\/[a-z0-9.+-]+;base64,/i.test(uri) ||
+    /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(uri)
+  );
+}
+
 export function usePactDetailPage(id, address) {
   const showToast = useToastStore((state) => state.showToast);
   const queryClient = useQueryClient();
+  const { ready: privyReady, authenticated: privyAuthenticated, login: loginWithPrivy } = usePrivy();
+  const pactId = parsePactPublicId(id);
+  const invalidPactId = !pactId;
   const [resolutionRef, setResolutionRef] = useState('manual-review');
   const [disputeEvidenceDraft, setDisputeEvidenceDraft] = useState('');
   const [pendingEvidenceFile, setPendingEvidenceFile] = useState(null);
@@ -85,17 +100,23 @@ export function usePactDetailPage(id, address) {
   const [commentDraft, setCommentDraft] = useState('');
   const configured = isProtocolConfigured();
   const readiness = useProtocolReadiness();
-  const readsEnabled = configured;
+  const readsEnabled = configured && !invalidPactId;
   const usernameRegistryConfigured = hasUsernameRegistryConfigured();
-  const catboxUploadConfigured = isCatboxUploadConfigured();
+  const catboxUploadConfigured = true;
   const maxCommentLength = getMaxPactCommentLength();
   const now = useNow(15_000);
+  const shouldAvoidChainFallback = readiness.data?.contractsConfigured === false;
 
   const pactQuery = useQuery({
-    queryKey: ['pact', id, address],
-    queryFn: () => readPactById(id, address, { preferIndexed: readiness.canRead }),
-    enabled: configured,
-    refetchInterval: 15_000
+    queryKey: ['pact', pactId, address],
+    queryFn: () =>
+      readPactById(pactId, address, {
+        preferIndexed: readiness.canRead || shouldAvoidChainFallback,
+        skipChainFallback: shouldAvoidChainFallback
+      }),
+    enabled: readsEnabled,
+    refetchInterval: 15_000,
+    retry: false
   });
 
   const vaultQuery = useQuery({
@@ -126,23 +147,32 @@ export function usePactDetailPage(id, address) {
   });
 
   const commentsQuery = useQuery({
-    queryKey: ['pact-messages', id, address],
-    queryFn: () => readPactCommentThread(id, address),
-    enabled: configured,
+    queryKey: ['pact-messages', pactId, address],
+    queryFn: () => readPactCommentThread(pactId, address),
+    enabled: readsEnabled,
     refetchInterval: 15_000
   });
 
+  const walletSessionQuery = useQuery({
+    queryKey: ['wallet-session', address, privyAuthenticated],
+    queryFn: readWalletSession,
+    enabled: Boolean(address),
+    staleTime: 15_000,
+    refetchInterval: 60_000,
+    retry: false
+  });
+
   const evidenceHistoryQuery = useQuery({
-    queryKey: ['pact-evidence', id, address],
-    queryFn: () => readPactEvidenceHistory(id, address),
-    enabled: configured,
+    queryKey: ['pact-evidence', pactId, address],
+    queryFn: () => readPactEvidenceHistory(pactId, address),
+    enabled: readsEnabled,
     refetchInterval: 15_000
   });
 
   const disputeOpenedAtQuery = useQuery({
-    queryKey: ['pact-dispute-opened-at', id],
-    queryFn: () => readDisputeOpenedAt(id),
-    enabled: configured && Boolean(address) && pactQuery.data?.rawStatus === 'Disputed',
+    queryKey: ['pact-dispute-opened-at', pactId],
+    queryFn: () => readDisputeOpenedAt(pactId),
+    enabled: readsEnabled && Boolean(address) && pactQuery.data?.rawStatus === 'Disputed',
     staleTime: 15_000,
     refetchInterval: 15_000
   });
@@ -152,10 +182,10 @@ export function usePactDetailPage(id, address) {
       queryClient.invalidateQueries({ queryKey: ['pacts'] }),
       queryClient.invalidateQueries({ queryKey: ['explore-pacts'] }),
       queryClient.invalidateQueries({ queryKey: ['admin-pacts'] }),
-      queryClient.invalidateQueries({ queryKey: ['pact', id, address] }),
+      queryClient.invalidateQueries({ queryKey: ['pact', pactId, address] }),
       queryClient.invalidateQueries({ queryKey: ['vault', address] }),
-      queryClient.invalidateQueries({ queryKey: ['pact-messages', id, address] }),
-      queryClient.invalidateQueries({ queryKey: ['pact-evidence', id, address] })
+      queryClient.invalidateQueries({ queryKey: ['pact-messages', pactId, address] }),
+      queryClient.invalidateQueries({ queryKey: ['pact-evidence', pactId, address] })
     ]);
   };
 
@@ -165,7 +195,7 @@ export function usePactDetailPage(id, address) {
       showToast({
         variant: 'success',
         title: successTitle,
-        message: getReceiptStatusMessage(receipt)
+        ...buildTransactionToast(receipt)
       });
     },
     onError: (error) => {
@@ -189,7 +219,7 @@ export function usePactDetailPage(id, address) {
       : '';
 
   const joinMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (username) => {
       if (!address) {
         throw new Error('Connect your wallet to join this pact.');
       }
@@ -202,38 +232,52 @@ export function usePactDetailPage(id, address) {
         throw new Error(joinBalanceError);
       }
 
-      return joinPact(address, id);
+      const res = await joinPact(address, pactId);
+
+      if (username && typeof username === 'string' && username.trim()) {
+        try {
+          await appendPactComment({
+            pactId,
+            address,
+            message: `Counterparty's in-game username: ${username.trim()}`
+          });
+        } catch(e) {
+          console.error('Failed to post username comment', e);
+        }
+      }
+
+      return res;
     },
     ...createMutationHandlers('Pact joined', 'Join failed')
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => cancelPact(address, id),
+    mutationFn: () => cancelPact(address, pactId),
     ...createMutationHandlers('Pact cancelled', 'Cancel failed')
   });
 
   const cancelExpiredMutation = useMutation({
-    mutationFn: () => cancelExpiredPact(address, id),
+    mutationFn: () => cancelExpiredPact(address, pactId),
     ...createMutationHandlers('Expired pact cancelled', 'Cancel expired failed')
   });
 
   const declareMutation = useMutation({
-    mutationFn: (winner) => submitWinner(address, id, winner),
+    mutationFn: (winner) => submitWinner(address, pactId, winner),
     ...createMutationHandlers('Declaration submitted', 'Declaration failed')
   });
 
   const singleDeclarationDisputeMutation = useMutation({
-    mutationFn: () => openUnansweredDeclarationDispute(address, id),
+    mutationFn: () => openUnansweredDeclarationDispute(address, pactId),
     ...createMutationHandlers('Dispute opened', 'Dispute failed')
   });
 
   const mismatchDisputeMutation = useMutation({
-    mutationFn: () => openMismatchDispute(address, id),
+    mutationFn: () => openMismatchDispute(address, pactId),
     ...createMutationHandlers('Dispute opened', 'Dispute failed')
   });
 
   const settleMutation = useMutation({
-    mutationFn: () => settleAfterDeclarationWindow(address, id),
+    mutationFn: () => settleAfterDeclarationWindow(address, pactId),
     ...createMutationHandlers('Declaration window settled', 'Settlement failed')
   });
 
@@ -242,13 +286,15 @@ export function usePactDetailPage(id, address) {
       const linksSection = evidenceUploads
         .filter((item) => item.status === 'uploaded' && item.url)
         .map((item) => item.url)
+        .concat(currentUserStoredEvidenceLinks)
+        .filter((value, index, values) => value && values.indexOf(value) === index)
         .join('\n');
       const payload = [disputeEvidenceDraft.trim(), linksSection ? `File links:\n${linksSection}` : '']
         .filter(Boolean)
         .join('\n\n');
-      return submitDisputeEvidence(address, id, payload);
+      return submitDisputeEvidence(address, pactId, payload);
     },
-    onSuccess: async () => {
+    onSuccess: async (receipt) => {
       setDisputeEvidenceDraft('');
       setPendingEvidenceFile(null);
       setEvidenceUploads([]);
@@ -256,7 +302,9 @@ export function usePactDetailPage(id, address) {
       showToast({
         variant: 'success',
         title: 'Dispute proof submitted',
-        message: 'Your proof has been attached to this dispute on-chain.'
+        ...buildTransactionToast(receipt, {
+          message: 'Your proof has been attached to this dispute on-chain.'
+        })
       });
     },
     onError: (error) => {
@@ -275,7 +323,7 @@ export function usePactDetailPage(id, address) {
       }
 
       return uploadManagedEvidence({
-        pactId: Number(id),
+        pactId,
         address,
         file: pendingEvidenceFile
       });
@@ -318,7 +366,7 @@ export function usePactDetailPage(id, address) {
       showToast({
         variant: 'success',
         title: 'File uploaded',
-        message: `${result.name} was uploaded to Catbox and recorded in the evidence history.`
+        message: `${result.name} was added to this pact.`
       });
     },
     onError: (error, _variables, context) => {
@@ -336,23 +384,87 @@ export function usePactDetailPage(id, address) {
       showToast({
         variant: 'error',
         title: 'Upload failed',
-        message: error?.message || 'Could not upload this file to Catbox.'
+        message: error?.message || 'Could not upload this file.'
       });
     }
   });
 
+  const handlePendingEvidenceFileChange = (file) => {
+    if (!file) {
+      setPendingEvidenceFile(null);
+      return;
+    }
+
+    try {
+      validateManagedEvidenceFile(file);
+      setPendingEvidenceFile(file);
+    } catch (error) {
+      setPendingEvidenceFile(null);
+      showToast({
+        variant: 'error',
+        title: 'File not allowed',
+        message: error?.message || 'Choose a smaller image or video.'
+      });
+    }
+  };
+
   const resolveWinnerMutation = useMutation({
-    mutationFn: (winner) => adminResolveWinner(address, id, winner, resolutionRef),
+    mutationFn: (winner) => adminResolveWinner(address, pactId, winner, resolutionRef),
     ...createMutationHandlers('Winner resolved', 'Resolution failed')
   });
 
+  const analyzeEfootballResultMutation = useMutation({
+    mutationFn: async () => {
+      const result = await analyzePactEvidence({
+        pactId,
+        address
+      });
+      const winner = String(result?.winnerAddress || result?.winner || '').trim();
+      if (
+        !winner ||
+        winner === zeroAddress ||
+        ![pactQuery.data?.creator?.toLowerCase(), pactQuery.data?.counterparty?.toLowerCase()].includes(
+          winner.toLowerCase()
+        )
+      ) {
+        throw new Error('AI could not confidently match the screenshot winner to either pact participant.');
+      }
+
+      const receipt = await submitWinner(address, pactId, winner);
+      return {
+        result,
+        receipt
+      };
+    },
+    onSuccess: async ({ result, receipt }) => {
+      await refreshAll();
+      const analysis = result?.analysis || {};
+      showToast({
+        variant: 'success',
+        title: 'AI result submitted',
+        ...buildTransactionToast(receipt, {
+          message: analysis.winnerUsername || analysis.explanation
+            ? `${analysis.winnerUsername || 'Winner'} detected as the winner.`
+            : 'AI submitted the detected winner on-chain.'
+        })
+      });
+    },
+    onError: (error) => {
+      showToast({
+        variant: 'error',
+        title: 'AI result failed',
+        message: error?.message || 'Could not analyze the screenshot and submit the result.'
+      });
+    }
+  });
+
   const resolveSplitMutation = useMutation({
-    mutationFn: () => adminResolveSplit(address, id, 5000, resolutionRef),
+    mutationFn: () => adminResolveSplit(address, pactId, 5000, resolutionRef),
     ...createMutationHandlers('Split resolved', 'Resolution failed')
   });
 
   const forceDisputeSplitMutation = useMutation({
-    mutationFn: () => forceSplitAfterDisputeTimeout(address, id),
+    mutationFn: () => forceSplitAfterDisputeTimeout(address, pactId),
     ...createMutationHandlers('Dispute split forced', 'Split fallback failed')
   });
 
@@ -363,7 +475,7 @@ export function usePactDetailPage(id, address) {
       }
 
       return appendPactComment({
-        pactId: pactQuery.data?.id || id,
+        pactId: pactQuery.data?.id || pactId,
         address,
         message: commentDraft
       });
@@ -390,7 +502,7 @@ export function usePactDetailPage(id, address) {
     setDisputeEvidenceDraft('');
     setPendingEvidenceFile(null);
     setEvidenceUploads([]);
-  }, [pactQuery.data?.currentUserEvidence, pactQuery.data?.id]);
+  }, [pactQuery.data?.currentUserOnChainEvidence, pactQuery.data?.id]);
 
   const rawPact = pactQuery.data;
   const protocol = vaultQuery.data;
@@ -412,7 +524,7 @@ export function usePactDetailPage(id, address) {
       ...rawPact,
       adminReviewReady:
         Boolean(rawPact.canAdminResolve) &&
-        (Boolean(rawPact.creatorEvidence?.trim()) || Boolean(rawPact.counterpartyEvidence?.trim())),
+        Boolean(rawPact.hasOnChainDisputeEvidence),
       disputeTimeoutAt,
       canForceDisputeSplit
     };
@@ -494,19 +606,51 @@ export function usePactDetailPage(id, address) {
   }, [counterpartyMeta, creatorMeta, pact]);
 
   const finalResultStatus = pact ? getFinalResultStatus(pact, formatParticipant, now) : null;
-  const shareUrl = typeof window !== 'undefined' && pact ? `${window.location.origin}/pact/${pact.id}` : '';
+  const shareUrl = typeof window !== 'undefined' && pact ? `${window.location.origin}${buildPactPath(pact.id)}` : '';
   const comments = commentsQuery.data?.messages || [];
   const requiresParticipantAccess = Boolean(commentsQuery.data?.requiresParticipantAccess);
   const evidenceHistory = evidenceHistoryQuery.data || [];
+  const currentUserStoredEvidenceLinks = evidenceHistory
+    .filter((item) => {
+      const evidenceUri = String(item?.evidence_uri || item?.evidenceUri || '').trim();
+      const participantAddress = String(item?.participant_address || item?.participantAddress || '').toLowerCase();
+      const txHash = String(item?.tx_hash || item?.txHash || '').trim();
+      return (
+        Boolean(evidenceUri) &&
+        Boolean(address) &&
+        participantAddress === address.toLowerCase() &&
+        !txHash
+      );
+    })
+    .map((item) => String(item.evidence_uri || item.evidenceUri || '').trim())
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+  const efootballEvidenceReady = Boolean(
+    pact?.eventType === 'eFootball' &&
+      (evidenceUploads.some((item) => item.status === 'uploaded' && isImageEvidence(item)) ||
+        evidenceHistory.some(
+          (item) =>
+            isImageEvidence(item) &&
+            (!address || String(item.participant_address || item.participantAddress || '').toLowerCase() === address.toLowerCase())
+        ))
+  );
   const canCurrentWalletChat =
     Boolean(address) && Boolean(pact?.participantRole !== 'viewer' || protocol?.isArbiter || protocol?.isAdmin);
+  const hasVerifiedWalletSession =
+    Boolean(walletSessionQuery.data?.authenticated) &&
+    Boolean(address) &&
+    String(walletSessionQuery.data?.address || '').toLowerCase() === address.toLowerCase();
+  const chatAuthenticated = Boolean(privyAuthenticated || hasVerifiedWalletSession);
   const chatAccessMessage = !address
     ? 'Connect a wallet to join the shared pact chat.'
+    : canCurrentWalletChat && !chatAuthenticated
+      ? 'Post with your connected wallet. If this browser needs verification, you will sign one gas-free message.'
     : pact?.isOpen && pact?.participantRole === 'creator'
         ? 'Only the creator can comment until a counterparty joins and reserves stake.'
         : !canCurrentWalletChat
           ? 'Only the creator, joined counterparty, or an arbiter can post in this thread.'
-        : 'Chat is ready for the joined pact participants. Posting only needs a one-time wallet sign-in if this device does not already have an active session.';
+        : hasVerifiedWalletSession
+          ? 'Chat is ready. This browser already has a verified session for your connected wallet.'
+          : 'Chat is ready for the joined pact participants.';
 
   const singleDeclarationPending =
     Boolean(
@@ -531,15 +675,15 @@ export function usePactDetailPage(id, address) {
 
     if (!creatorSubmitted && !counterpartySubmitted) {
       return {
-        label: 'Retry automatic split settlement',
-        helper: 'No winner was declared before the window closed, so the pact now settles into a split payout.'
+        label: 'Settle no-result split',
+        helper: 'No result screenshot was uploaded before the deadline, so either joined participant can close this pact into a split payout.'
       };
     }
 
     if (creatorSubmitted !== counterpartySubmitted) {
       return {
-        label: 'Settle lone declaration',
-        helper: 'The timeout and grace period are over, so the lone declaration can now settle to the declared winner.'
+        label: 'Settle uncontested result',
+        helper: 'The timeout and grace period are over, so the only submitted result can now settle.'
       };
     }
 
@@ -551,7 +695,7 @@ export function usePactDetailPage(id, address) {
     }
 
     return {
-      label: 'Retry automatic settlement',
+      label: 'Settle ready result',
       helper: 'The outcome is ready for on-chain settlement.'
     };
   }, [pact]);
@@ -582,7 +726,7 @@ export function usePactDetailPage(id, address) {
   const handleEvidenceSubmit = (event) => {
     event.preventDefault();
     const uploadedLinks = evidenceUploads.filter((item) => item.status === 'uploaded' && item.url);
-    if (!disputeEvidenceDraft.trim() && !uploadedLinks.length) {
+    if (!disputeEvidenceDraft.trim() && !uploadedLinks.length && !currentUserStoredEvidenceLinks.length) {
       return;
     }
 
@@ -593,6 +737,8 @@ export function usePactDetailPage(id, address) {
     configured,
     readiness,
     readsEnabled,
+    invalidPactId,
+    pactId,
     usernameRegistryConfigured,
     catboxUploadConfigured,
     maxCommentLength,
@@ -602,6 +748,7 @@ export function usePactDetailPage(id, address) {
     creatorUsernameQuery,
     counterpartyUsernameQuery,
     commentsQuery,
+    walletSessionQuery,
     evidenceHistoryQuery,
     disputeOpenedAtQuery,
     pact,
@@ -615,14 +762,20 @@ export function usePactDetailPage(id, address) {
     shareUrl,
     comments,
     requiresParticipantAccess,
+    privyReady,
+    privyAuthenticated,
+    chatAuthenticated,
+    loginWithPrivy,
     evidenceHistory,
+    currentUserStoredEvidenceLinks,
     resolutionRef,
     setResolutionRef,
     disputeEvidenceDraft,
     setDisputeEvidenceDraft,
     pendingEvidenceFile,
-    setPendingEvidenceFile,
+    setPendingEvidenceFile: handlePendingEvidenceFileChange,
     evidenceUploads,
+    efootballEvidenceReady,
     setEvidenceUploads,
     commentDraft,
     setCommentDraft,
@@ -631,6 +784,7 @@ export function usePactDetailPage(id, address) {
     cancelMutation,
     cancelExpiredMutation,
     declareMutation,
+    analyzeEfootballResultMutation,
     singleDeclarationDisputeMutation,
     mismatchDisputeMutation,
     settleMutation,

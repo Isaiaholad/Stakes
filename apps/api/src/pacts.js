@@ -32,6 +32,10 @@ function normalizeDeclaration(record) {
   };
 }
 
+function isOnChainEvidenceRow(row) {
+  return Boolean(String(row?.tx_hash || '').trim());
+}
+
 function deriveStage(pact) {
   if (pact.rawStatus === 'Cancelled') {
     return 'Cancelled';
@@ -94,24 +98,24 @@ function deriveStage(pact) {
   return pact.rawStatus;
 }
 
-function getUsernameMap(addresses) {
+async function getUsernameMap(addresses) {
   const normalizedAddresses = [...new Set(addresses.map(normalizeAddress).filter(Boolean))];
   if (!normalizedAddresses.length) {
     return new Map();
   }
 
   const placeholders = normalizedAddresses.map(() => '?').join(', ');
-  const rows = all(`SELECT address, username FROM usernames WHERE address IN (${placeholders})`, normalizedAddresses);
+  const rows = await all(`SELECT address, username FROM usernames WHERE address IN (${placeholders})`, normalizedAddresses);
   return new Map(rows.map((row) => [normalizeAddress(row.address), row.username]));
 }
 
-function getMessageCounts(pactIds) {
+async function getMessageCounts(pactIds) {
   if (!pactIds.length) {
     return new Map();
   }
 
   const placeholders = pactIds.map(() => '?').join(', ');
-  const rows = all(
+  const rows = await all(
     `
       SELECT pact_id, COUNT(*) AS message_count
       FROM pact_messages
@@ -124,13 +128,13 @@ function getMessageCounts(pactIds) {
   return new Map(rows.map((row) => [Number(row.pact_id), Number(row.message_count)]));
 }
 
-function getDeclarationMap(pactIds) {
+async function getDeclarationMap(pactIds) {
   if (!pactIds.length) {
     return new Map();
   }
 
   const placeholders = pactIds.map(() => '?').join(', ');
-  const rows = all(`SELECT * FROM pact_declarations WHERE pact_id IN (${placeholders})`, pactIds);
+  const rows = await all(`SELECT * FROM pact_declarations WHERE pact_id IN (${placeholders})`, pactIds);
   const map = new Map();
 
   for (const row of rows) {
@@ -143,13 +147,13 @@ function getDeclarationMap(pactIds) {
   return map;
 }
 
-function getEvidenceMap(pactIds) {
+async function getEvidenceMap(pactIds) {
   if (!pactIds.length) {
     return new Map();
   }
 
   const placeholders = pactIds.map(() => '?').join(', ');
-  const rows = all(
+  const rows = await all(
     `SELECT * FROM pact_evidence WHERE pact_id IN (${placeholders}) ORDER BY created_at ASC, id ASC`,
     pactIds
   );
@@ -180,10 +184,14 @@ function buildPactView(record, protocol, currentAddress, usernames, declarationR
   const counterpartyDeclaration = normalizeDeclaration(
     declarationRows.find((row) => normalizeAddress(row.participant_address) === normalizeAddress(counterparty))
   );
-  const creatorEvidenceRow = evidenceRows.find((row) => normalizeAddress(row.participant_address) === normalizeAddress(creator));
-  const counterpartyEvidenceRow = evidenceRows.find(
+  const creatorEvidenceRows = evidenceRows.filter((row) => normalizeAddress(row.participant_address) === normalizeAddress(creator));
+  const counterpartyEvidenceRows = evidenceRows.filter(
     (row) => normalizeAddress(row.participant_address) === normalizeAddress(counterparty)
   );
+  const creatorEvidenceRow = creatorEvidenceRows[0];
+  const counterpartyEvidenceRow = counterpartyEvidenceRows[0];
+  const creatorOnChainEvidenceRow = creatorEvidenceRows.find(isOnChainEvidenceRow);
+  const counterpartyOnChainEvidenceRow = counterpartyEvidenceRows.find(isOnChainEvidenceRow);
   const bothSubmitted = creatorDeclaration.submitted && counterpartyDeclaration.submitted;
   const declarationsMatch =
     bothSubmitted &&
@@ -213,6 +221,12 @@ function buildPactView(record, protocol, currentAddress, usernames, declarationR
       : participantRole === 'counterparty'
         ? counterpartyEvidenceRow?.evidence_uri || ''
         : '';
+  const currentUserOnChainEvidence =
+    participantRole === 'creator'
+      ? creatorOnChainEvidenceRow?.evidence_uri || ''
+      : participantRole === 'counterparty'
+        ? counterpartyOnChainEvidenceRow?.evidence_uri || ''
+        : '';
   const eventEnded = Boolean(eventEndIso) && now >= new Date(eventEndIso).getTime();
   const declarationWindowClosed =
     Boolean(submissionDeadlineIso) && now > new Date(submissionDeadlineIso).getTime();
@@ -232,6 +246,7 @@ function buildPactView(record, protocol, currentAddress, usernames, declarationR
         : { submitted: false };
   const hasAdminRole = Boolean(protocol.isAdmin || protocol.isArbiter);
   const hasArbiterRole = Boolean(protocol.isArbiter);
+  const isJoinedParticipant = participantRole === 'creator' || participantRole === 'counterparty';
   const missingDeclarerCanDispute =
     (participantRole === 'creator' && !creatorDeclaration.submitted && counterpartyDeclaration.submitted) ||
     (participantRole === 'counterparty' && !counterpartyDeclaration.submitted && creatorDeclaration.submitted);
@@ -274,12 +289,12 @@ function buildPactView(record, protocol, currentAddress, usernames, declarationR
     record.raw_status === 'Active' &&
     declarationWindowClosed &&
     (!singleSubmissionPending || singleSubmitterGraceElapsed) &&
-    (participantRole !== 'viewer' || hasAdminRole);
+    (isJoinedParticipant || hasAdminRole);
   const canSubmitEvidence =
     Boolean(currentAddress) &&
     participantRole !== 'viewer' &&
     record.raw_status === 'Disputed' &&
-    !currentUserEvidence;
+    !currentUserOnChainEvidence;
   const canAdminResolve = hasArbiterRole && record.raw_status === 'Disputed';
 
   return {
@@ -315,7 +330,13 @@ function buildPactView(record, protocol, currentAddress, usernames, declarationR
     counterpartyDeclaration,
     creatorEvidence: creatorEvidenceRow?.evidence_uri || '',
     counterpartyEvidence: counterpartyEvidenceRow?.evidence_uri || '',
+    creatorOnChainEvidence: creatorOnChainEvidenceRow?.evidence_uri || '',
+    counterpartyOnChainEvidence: counterpartyOnChainEvidenceRow?.evidence_uri || '',
+    creatorEvidenceOnChain: Boolean(creatorOnChainEvidenceRow),
+    counterpartyEvidenceOnChain: Boolean(counterpartyOnChainEvidenceRow),
+    hasOnChainDisputeEvidence: Boolean(creatorOnChainEvidenceRow || counterpartyOnChainEvidenceRow),
     currentUserEvidence,
+    currentUserOnChainEvidence,
     participantRole,
     isOpen: counterparty === zeroAddress,
     canJoin,
@@ -346,14 +367,14 @@ function buildPactView(record, protocol, currentAddress, usernames, declarationR
   };
 }
 
-function hydrateRows(rows, protocol, currentAddress) {
+async function hydrateRows(rows, protocol, currentAddress) {
   const pactIds = rows.map((row) => Number(row.pact_id));
-  const declarationMap = getDeclarationMap(pactIds);
-  const evidenceMap = getEvidenceMap(pactIds);
-  const usernames = getUsernameMap(
+  const declarationMap = await getDeclarationMap(pactIds);
+  const evidenceMap = await getEvidenceMap(pactIds);
+  const usernames = await getUsernameMap(
     rows.flatMap((row) => [row.creator_address, row.counterparty_address]).filter(Boolean)
   );
-  const messageCounts = getMessageCounts(pactIds);
+  const messageCounts = await getMessageCounts(pactIds);
 
   return rows.map((row) =>
     buildPactView(
@@ -385,7 +406,7 @@ function dedupeRowsByPactId(rows) {
   return deduped;
 }
 
-function listDashboardRows(limit, currentAddress) {
+async function listDashboardRows(limit, currentAddress) {
   const safeLimit = Math.max(Number(limit || 0), 0);
   const normalizedCurrentAddress = normalizeAddress(currentAddress);
 
@@ -394,10 +415,19 @@ function listDashboardRows(limit, currentAddress) {
   }
 
   if (!normalizedCurrentAddress) {
-    return all(`SELECT * FROM pacts ORDER BY pact_id DESC LIMIT ?`, [safeLimit]);
+    return await all(
+      `
+        SELECT *
+        FROM pacts
+        WHERE raw_status = 'Proposed' AND counterparty_address = ?
+        ORDER BY pact_id DESC
+        LIMIT ?
+      `,
+      [zeroAddress, safeLimit]
+    );
   }
 
-  const participantRows = all(
+  const participantRows = await all(
     `
       SELECT *
       FROM pacts
@@ -408,7 +438,7 @@ function listDashboardRows(limit, currentAddress) {
     [normalizedCurrentAddress, normalizedCurrentAddress, Math.max(safeLimit * 3, safeLimit)]
   );
 
-  const openRows = all(
+  const openRows = await all(
     `
       SELECT *
       FROM pacts
@@ -419,18 +449,16 @@ function listDashboardRows(limit, currentAddress) {
     [zeroAddress, Math.max(safeLimit * 3, safeLimit)]
   );
 
-  const recentRows = all(`SELECT * FROM pacts ORDER BY pact_id DESC LIMIT ?`, [Math.max(safeLimit * 3, safeLimit)]);
-
-  return dedupeRowsByPactId([...participantRows, ...openRows, ...recentRows]).slice(0, safeLimit);
+  return dedupeRowsByPactId([...participantRows, ...openRows]).slice(0, safeLimit);
 }
 
-export function listRecentPacts(limit, protocol, currentAddress) {
-  const rows = listDashboardRows(limit, currentAddress);
-  return hydrateRows(rows, protocol, currentAddress);
+export async function listRecentPacts(limit, protocol, currentAddress) {
+  const rows = await listDashboardRows(limit, currentAddress);
+  return await hydrateRows(rows, protocol, currentAddress);
 }
 
-export function listOpenPacts(limit, protocol, currentAddress) {
-  const rows = all(
+export async function listOpenPacts(limit, protocol, currentAddress) {
+  const rows = await all(
     `
       SELECT *
       FROM pacts
@@ -441,29 +469,31 @@ export function listOpenPacts(limit, protocol, currentAddress) {
     [zeroAddress, Math.max(limit * 3, limit)]
   );
 
-  return hydrateRows(rows, protocol, currentAddress)
+  const hydratedRows = await hydrateRows(rows, protocol, currentAddress);
+  return hydratedRows
     .filter((pact) => pact.stage === 'Open For Join')
     .slice(0, limit);
 }
 
-export function getPactById(pactId, protocol, currentAddress) {
-  const row = get(`SELECT * FROM pacts WHERE pact_id = ?`, [pactId]);
+export async function getPactById(pactId, protocol, currentAddress) {
+  const row = await get(`SELECT * FROM pacts WHERE pact_id = ?`, [pactId]);
   if (!row) {
     return null;
   }
 
-  return hydrateRows([row], protocol, currentAddress)[0] || null;
+  const [pact] = await hydrateRows([row], protocol, currentAddress);
+  return pact || null;
 }
 
-export function listAdminQueuePacts(limit, protocol, currentAddress) {
-  const rows = all(`SELECT * FROM pacts ORDER BY pact_id DESC LIMIT ?`, [limit]);
-  return hydrateRows(rows, protocol, currentAddress);
+export async function listAdminQueuePacts(limit, protocol, currentAddress) {
+  const rows = await all(`SELECT * FROM pacts ORDER BY pact_id DESC LIMIT ?`, [limit]);
+  return await hydrateRows(rows, protocol, currentAddress);
 }
 
-export function getPactAccessRecord(pactId) {
-  return get(
+export async function getPactAccessRecord(pactId) {
+  return await get(
     `
-      SELECT pact_id, creator_address, counterparty_address, raw_status
+      SELECT pact_id, creator_address, counterparty_address, raw_status, event_type, description
       FROM pacts
       WHERE pact_id = ?
     `,
@@ -471,12 +501,12 @@ export function getPactAccessRecord(pactId) {
   );
 }
 
-export function addressIsParticipant(pactId, address) {
+export async function addressIsParticipant(pactId, address) {
   if (!address) {
     return false;
   }
 
-  const row = get(
+  const row = await get(
     `
       SELECT 1
       FROM pact_participants
@@ -489,26 +519,26 @@ export function addressIsParticipant(pactId, address) {
   return Boolean(row);
 }
 
-export function usernameByAddress(address) {
+export async function usernameByAddress(address) {
   if (!address) {
     return '';
   }
 
-  const row = get(`SELECT username FROM usernames WHERE address = ?`, [normalizeAddress(address)]);
+  const row = await get(`SELECT username FROM usernames WHERE address = ?`, [normalizeAddress(address)]);
   return row?.username || '';
 }
 
-export function addressByUsername(username) {
+export async function addressByUsername(username) {
   if (!username) {
     return zeroAddress;
   }
 
-  const row = get(`SELECT address FROM usernames WHERE username = ?`, [String(username).trim().toLowerCase()]);
+  const row = await get(`SELECT address FROM usernames WHERE username = ?`, [String(username).trim().toLowerCase()]);
   return row?.address || zeroAddress;
 }
 
-export function listPactMessages(pactId, limit = 200) {
-  return all(
+export async function listPactMessages(pactId, limit = 200) {
+  return await all(
     `
       SELECT id, pact_id, author_address, body, created_at, updated_at, deleted_at
       FROM pact_messages
@@ -520,8 +550,8 @@ export function listPactMessages(pactId, limit = 200) {
   );
 }
 
-export function listPactEvidence(pactId) {
-  return all(
+export async function listPactEvidence(pactId) {
+  return await all(
     `
       SELECT
         id,

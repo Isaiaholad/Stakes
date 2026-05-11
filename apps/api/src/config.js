@@ -7,6 +7,7 @@ const workspaceRoot = path.resolve(__dirname, '../../..');
 const apiRoot = path.resolve(__dirname, '..');
 const webRoot = path.resolve(workspaceRoot, 'apps/web');
 const zeroAddress = '0x0000000000000000000000000000000000000000';
+const apiVirtualenvPython = path.join(apiRoot, '.venv/bin/python');
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -95,7 +96,8 @@ export const apiConfig = {
   host: getEnv('API_HOST', '127.0.0.1'),
   port: parseInteger(getEnv('API_PORT', 8787), 8787),
   allowedOrigin: getEnv('ALLOWED_ORIGIN', '*'),
-  databasePath: path.resolve(apiRoot, getEnv('DATABASE_PATH', 'data/stakewithfriends.sqlite')),
+  databaseUrl: getEnv('DATABASE_URL', ''),
+  databasePoolMax: parseInteger(getEnv('DATABASE_POOL_MAX', 4), 4),
   rpcUrl: normalizeRpcUrl(getEnv('ARC_RPC_URL', getEnv('VITE_RPC_URL', 'https://rpc.testnet.arc.network'))),
   chainId: parseInteger(getEnv('CHAIN_ID', getEnv('VITE_CHAIN_ID', 5042002)), 5042002),
   embedIndexer: parseBoolean(getEnv('EMBED_INDEXER', 'true'), true),
@@ -129,8 +131,30 @@ export const apiConfig = {
     getEnv('EVIDENCE_METADATA_RATE_LIMIT_WINDOW_MS', 10 * 60_000),
     10 * 60_000
   ),
-  storageMode: getEnv('STORAGE_MODE', 'catbox-public'),
+  maxJsonBodyBytes: parseInteger(getEnv('MAX_JSON_BODY_BYTES', 8 * 1024 * 1024), 8 * 1024 * 1024),
+  maxEvidenceImageBytes: parseInteger(getEnv('MAX_EVIDENCE_IMAGE_BYTES', 1 * 1024 * 1024), 1 * 1024 * 1024),
+  maxEvidenceVideoBytes: parseInteger(getEnv('MAX_EVIDENCE_VIDEO_BYTES', 10 * 1024 * 1024), 10 * 1024 * 1024),
+  storageMode: getEnv('STORAGE_MODE', 'supabase-s3'),
   catboxPublicBaseUrl: getEnv('CATBOX_PUBLIC_BASE_URL', 'https://files.catbox.moe'),
+  storageS3Endpoint: getEnv('STORAGE_S3_ENDPOINT', ''),
+  storageBucket: getEnv('STORAGE_BUCKET', 'evidence'),
+  storageRegion: getEnv('STORAGE_REGION', 'eu-west-1'),
+  storageAccessKeyId: getEnv('STORAGE_ACCESS_KEY_ID', ''),
+  storageSecretAccessKey: getEnv('STORAGE_SECRET_ACCESS_KEY', ''),
+  storagePublicBaseUrl: getEnv('STORAGE_PUBLIC_BASE_URL', ''),
+  storageAutoCreateBucket: parseBoolean(getEnv('STORAGE_AUTO_CREATE_BUCKET', 'true'), true),
+  supabaseUrl: getEnv('SUPABASE_URL', ''),
+  supabaseServiceRoleKey: getEnv('SUPABASE_SERVICE_ROLE_KEY', ''),
+  ffmpegPath: getEnv('FFMPEG_PATH', 'ffmpeg'),
+  aiAnalysisProvider: getEnv('AI_ANALYSIS_PROVIDER', 'ollama'),
+  efootballOcrConfidenceThreshold: Number(getEnv('EFOOTBALL_OCR_CONFIDENCE_THRESHOLD', '0.6')),
+  ollamaBaseUrl: getEnv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
+  ollamaVisionModel: getEnv('OLLAMA_VISION_MODEL', 'llava'),
+  openaiApiKey: getEnv('OPENAI_API_KEY', ''),
+  openaiVisionModel: getEnv('OPENAI_VISION_MODEL', 'gpt-4.1-mini'),
+  pythonPath: getEnv('PYTHON_BIN', fs.existsSync(apiVirtualenvPython) ? apiVirtualenvPython : 'python3'),
+  privyAppId: getEnv('PRIVY_APP_ID', ''),
+  privyAppSecret: getEnv('PRIVY_APP_SECRET', ''),
   maxCommentLength: parseInteger(getEnv('MAX_PACT_COMMENT_LENGTH', 280), 280),
   maxMessagesPerPact: parseInteger(getEnv('MAX_PACT_MESSAGES_PER_PACT', 200), 200),
   stateReconcileConcurrency: parseInteger(getEnv('STATE_RECONCILE_CONCURRENCY', 4), 4),

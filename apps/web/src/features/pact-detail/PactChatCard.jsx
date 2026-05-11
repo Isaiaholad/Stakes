@@ -8,6 +8,7 @@ export default function PactChatCard({
   chatAccessMessage,
   canCurrentWalletChat,
   requiresParticipantAccess,
+  chatAuthenticated,
   commentDraft,
   setCommentDraft,
   maxCommentLength,
@@ -35,13 +36,13 @@ export default function PactChatCard({
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-3 max-h-96 overflow-y-auto pr-2 flex flex-col-reverse">
         {commentsQuery.isLoading && !comments.length ? (
           <div className="rounded-[22px] border border-dashed border-slate/15 bg-sand/40 px-4 py-6 text-sm text-slate/65">
             Loading shared pact messages...
           </div>
         ) : comments.length ? (
-          comments.map((comment) => {
+          [...comments].reverse().map((comment) => {
             const isMine = address && comment.authorAddress?.toLowerCase() === address.toLowerCase();
 
             return (
@@ -90,16 +91,26 @@ export default function PactChatCard({
         <textarea
           value={commentDraft}
           onChange={(event) => setCommentDraft(event.target.value.slice(0, maxCommentLength))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              if (canPostComment && !postCommentMutation.isPending) {
+                handleCommentSubmit(event);
+              }
+            }
+          }}
           placeholder={
             !address
               ? 'Connect a wallet to post a shared message.'
               : !canCurrentWalletChat
                 ? 'Only participants and arbiters can post in this pact thread.'
-                : 'Add a shared comment for this pact...'
+                : chatAuthenticated
+                  ? 'Add a shared comment for this pact...'
+                  : 'Add a shared comment. You may be asked for a one-time wallet signature when posting.'
           }
           disabled={!address || !canCurrentWalletChat}
-          rows={4}
-          className="w-full rounded-[24px] border border-slate/10 bg-sand px-4 py-4 outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          rows={3}
+          className="w-full rounded-[24px] border border-slate/10 bg-sand px-4 py-4 outline-none disabled:cursor-not-allowed disabled:opacity-60 resize-none"
         />
         <div className="mt-3 flex items-center justify-between gap-3">
           <p className="text-xs text-slate/55">

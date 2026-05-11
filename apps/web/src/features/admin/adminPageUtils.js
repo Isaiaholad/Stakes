@@ -1,4 +1,5 @@
 import { shortenAddress } from '../../lib/formatters.js';
+import { formatPactPublicId } from '../../lib/pactIds.js';
 
 export const adminPactLimit = 200;
 export const unsetAddress = '0x0000000000000000000000000000000000000000';
@@ -13,6 +14,7 @@ export function matchesAdminSearch(pact, value) {
 
   return [
     String(pact.id),
+    formatPactPublicId(pact.id),
     pact.stage,
     pact.rawStatus,
     pact.title,
@@ -59,19 +61,27 @@ export function getDisputeProofState(pact) {
     };
   }
 
-  const creatorSubmitted = Boolean(pact.creatorEvidence?.trim());
-  const counterpartySubmitted = Boolean(pact.counterpartyEvidence?.trim());
+  const creatorSubmitted = Boolean(pact.creatorEvidenceOnChain || pact.creatorOnChainEvidence?.trim());
+  const counterpartySubmitted = Boolean(pact.counterpartyEvidenceOnChain || pact.counterpartyOnChainEvidence?.trim());
+  const hasStoredUpload = Boolean(pact.creatorEvidence?.trim() || pact.counterpartyEvidence?.trim());
 
   if (creatorSubmitted && counterpartySubmitted) {
     return {
-      label: 'Both proofs submitted',
+      label: 'Both on-chain proofs submitted',
       shell: 'bg-emerald-100 text-emerald-800'
     };
   }
 
   if (creatorSubmitted || counterpartySubmitted) {
     return {
-      label: 'One proof submitted',
+      label: 'One on-chain proof submitted',
+      shell: 'bg-amber-100 text-amber-800'
+    };
+  }
+
+  if (hasStoredUpload) {
+    return {
+      label: 'Upload saved, proof not on-chain',
       shell: 'bg-amber-100 text-amber-800'
     };
   }

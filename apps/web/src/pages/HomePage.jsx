@@ -13,7 +13,9 @@ import { isProtocolConfigured } from '../lib/contracts.js';
 import { readAllPacts, readVaultSnapshot } from '../lib/pacts.js';
 import { useWalletStore } from '../store/useWalletStore.js';
 
-const recentDashboardPactLimit = 12;
+const recentDashboardPactLimit = 24;
+const liveStages = new Set(['Active', 'Declaration Open', 'Result Submitted', 'Review Period', 'Ready To Finalize', 'Needs Dispute', 'Settlement Due']);
+const historyStages = new Set(['Completed', 'Split Completed', 'Cancelled', 'Acceptance Timed Out']);
 
 export default function HomePage() {
   const address = useWalletStore((state) => state.address);
@@ -83,8 +85,9 @@ export default function HomePage() {
   };
   const myPacts = pacts.filter((pact) => pact.participantRole !== 'viewer');
   const urgentPacts = myPacts.filter((pact) => pact.needsAction);
-  const activePacts = myPacts.filter((pact) => ['Active', 'Result Submitted', 'Review Period', 'Ready To Finalize'].includes(pact.stage));
+  const livePacts = pacts.filter((pact) => liveStages.has(pact.stage));
   const openPacts = pacts.filter((pact) => pact.stage === 'Open For Join');
+  const historyPacts = myPacts.filter((pact) => historyStages.has(pact.stage));
 
   return (
     <div className="space-y-5">
@@ -123,8 +126,8 @@ export default function HomePage() {
         <div className="mt-4 space-y-3">
           {!hasPactData ? (
             <p className="text-sm text-slate/70">Loading active pacts...</p>
-          ) : activePacts.length ? (
-            activePacts.map((pact) => <ChallengeCard key={pact.id} challenge={pact} />)
+          ) : livePacts.length ? (
+            livePacts.map((pact) => <ChallengeCard key={pact.id} challenge={pact} />)
           ) : (
             <p className="text-sm text-slate/70">Fund your vault, launch a challenge, or jump into an open pact to get a live match going.</p>
           )}
@@ -148,6 +151,27 @@ export default function HomePage() {
             urgentPacts.map((pact) => <ChallengeCard key={pact.id} challenge={pact} />)
           ) : (
             <EmptyState title="Nothing urgent" />
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-[32px] bg-white/80 p-5 shadow-glow">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-display text-2xl text-ink">Pact history</p>
+            <p className="text-sm text-slate/70">Completed, split, cancelled, and timed-out pacts stay available here.</p>
+          </div>
+          <Link to="/explore" className="rounded-full bg-sand px-4 py-2 text-sm font-semibold text-ink">
+            Open feed
+          </Link>
+        </div>
+        <div className="mt-4 space-y-3">
+          {!hasPactData ? (
+            <p className="text-sm text-slate/70">Loading pact history...</p>
+          ) : historyPacts.length ? (
+            historyPacts.map((pact) => <ChallengeCard key={pact.id} challenge={pact} />)
+          ) : (
+            <EmptyState title="No history yet" body="Resolved and cancelled pacts will appear here after your first finished matchup." />
           )}
         </div>
       </section>

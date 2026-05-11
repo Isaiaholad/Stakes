@@ -13,6 +13,8 @@ const ExplorePage = lazy(() => import('./pages/JoinPage.jsx'));
 const VaultPage = lazy(() => import('./pages/WalletPage.jsx'));
 const AdminPage = lazy(() => import('./pages/AdminPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
+const cacheResetVersion = '2026-05-07-upload-auth-cache-v3';
+const cacheResetStorageKey = 'stakewithfriends-cache-reset-version';
 
 function isLocalDevHost() {
   if (typeof window === 'undefined') {
@@ -22,7 +24,25 @@ function isLocalDevHost() {
   return ['localhost', '127.0.0.1'].includes(window.location.hostname);
 }
 
-function LocalhostCacheReset() {
+async function clearBrowserAppCaches() {
+  const hasServiceWorker = 'serviceWorker' in navigator;
+  const hasCacheStorage = 'caches' in window;
+  const registrations = hasServiceWorker ? await navigator.serviceWorker.getRegistrations() : [];
+  await Promise.all(registrations.map((registration) => registration.unregister().catch(() => false)));
+
+  let cacheKeys = [];
+  if (hasCacheStorage) {
+    cacheKeys = await window.caches.keys();
+    await Promise.all(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey).catch(() => false)));
+  }
+
+  return {
+    registrations,
+    cacheKeys
+  };
+}
+
+function CacheMigrationReset() {
   useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
@@ -37,20 +57,19 @@ function LocalhostCacheReset() {
     let cancelled = false;
 
     async function resetLocalCaches() {
-      const registrations = hasServiceWorker ? await navigator.serviceWorker.getRegistrations() : [];
-      await Promise.all(registrations.map((registration) => registration.unregister().catch(() => false)));
-
-      if (hasCacheStorage) {
-        const cacheKeys = await window.caches.keys();
-        await Promise.all(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey).catch(() => false)));
+      if (window.localStorage.getItem(cacheResetStorageKey) === cacheResetVersion) {
+        return;
       }
+
+      const { registrations, cacheKeys } = await clearBrowserAppCaches();
+      window.localStorage.setItem(cacheResetStorageKey, cacheResetVersion);
 
       if (cancelled) {
         return;
       }
 
-      const reloadKey = 'stakewithfriends-localhost-cache-reset-v1';
-      if (registrations.length > 0 && !window.sessionStorage.getItem(reloadKey)) {
+      const reloadKey = `stakewithfriends-cache-reset-${cacheResetVersion}`;
+      if ((registrations.length > 0 || cacheKeys.length > 0) && !window.sessionStorage.getItem(reloadKey)) {
         window.sessionStorage.setItem(reloadKey, '1');
         window.location.reload();
       }
@@ -90,7 +109,8 @@ export default function App() {
 
   return (
     <>
-      {localhost ? <LocalhostCacheReset /> : <UpdateBanner />}
+      <CacheMigrationReset />
+      {localhost ? null : <UpdateBanner />}
       <Suspense fallback={<LoadingScreen label="Opening your on-chain pact board..." />}>
         <Routes>
           <Route path="/" element={<AppShell />}>

@@ -13,6 +13,11 @@ import { useWalletStore } from '../store/useWalletStore.js';
 
 export default function ChallengePage() {
   const { id } = useParams();
+
+  return <ChallengePageContent key={id || 'missing-pact'} id={id} />;
+}
+
+function ChallengePageContent({ id }) {
   const address = useWalletStore((state) => state.address);
   const vm = usePactDetailPage(id, address);
 
@@ -20,6 +25,26 @@ export default function ChallengePage() {
     return (
       <div className="space-y-5">
         <ConfigBanner />
+      </div>
+    );
+  }
+
+  if (vm.invalidPactId) {
+    return (
+      <div className="space-y-5">
+        <ConfigBanner />
+        <section className="rounded-[32px] bg-white/85 p-5 shadow-glow">
+          <p className="text-xs uppercase tracking-[0.24em] text-slate/50">Pact link</p>
+          <h1 className="mt-2 font-display text-3xl text-ink">This pact link is not valid</h1>
+          <p className="mt-2 text-sm text-slate/70">
+            Check the link and try again, or open the live pact feed.
+          </p>
+          <div className="mt-4">
+            <Link to="/explore" className="rounded-full bg-ink px-4 py-3 text-sm font-semibold text-sand">
+              Open pact feed
+            </Link>
+          </div>
+        </section>
       </div>
     );
   }
@@ -102,6 +127,7 @@ export default function ChallengePage() {
           cancelMutation={vm.cancelMutation}
           cancelExpiredMutation={vm.cancelExpiredMutation}
           declareMutation={vm.declareMutation}
+          analyzeEfootballResultMutation={vm.analyzeEfootballResultMutation}
           singleDeclarationDisputeMutation={vm.singleDeclarationDisputeMutation}
           mismatchDisputeMutation={vm.mismatchDisputeMutation}
           settleMutation={vm.settleMutation}
@@ -115,6 +141,12 @@ export default function ChallengePage() {
           deadlineOutcomeWillAutoSettle={vm.deadlineOutcomeWillAutoSettle}
           singleDeclarationReviewPending={vm.singleDeclarationReviewPending}
           settlementAction={vm.settlementAction}
+          catboxUploadConfigured={vm.catboxUploadConfigured}
+          pendingEvidenceFile={vm.pendingEvidenceFile}
+          setPendingEvidenceFile={vm.setPendingEvidenceFile}
+          uploadDisputeFileMutation={vm.uploadDisputeFileMutation}
+          evidenceUploads={vm.evidenceUploads}
+          efootballEvidenceReady={vm.efootballEvidenceReady}
         />
       )}
 
@@ -127,6 +159,7 @@ export default function ChallengePage() {
         setPendingEvidenceFile={vm.setPendingEvidenceFile}
         evidenceUploads={vm.evidenceUploads}
         evidenceHistory={vm.evidenceHistory}
+        currentUserStoredEvidenceLinks={vm.currentUserStoredEvidenceLinks}
         evidenceHistoryQuery={vm.evidenceHistoryQuery}
         uploadDisputeFileMutation={vm.uploadDisputeFileMutation}
         disputeEvidenceMutation={vm.disputeEvidenceMutation}
@@ -148,6 +181,9 @@ export default function ChallengePage() {
         chatAccessMessage={vm.chatAccessMessage}
         canCurrentWalletChat={vm.canCurrentWalletChat}
         requiresParticipantAccess={vm.requiresParticipantAccess}
+        privyReady={vm.privyReady}
+        chatAuthenticated={vm.chatAuthenticated}
+        loginWithPrivy={vm.loginWithPrivy}
         commentDraft={vm.commentDraft}
         setCommentDraft={vm.setCommentDraft}
         maxCommentLength={vm.maxCommentLength}

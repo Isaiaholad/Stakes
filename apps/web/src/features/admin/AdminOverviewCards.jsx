@@ -111,14 +111,14 @@ export function AdminSearchCard({ searchValue, setSearchValue }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="font-display text-2xl text-ink">Find pacts</p>
-          <p className="text-sm text-slate/70">Search by pact ID, title, username, wallet, raw status, or stage.</p>
+          <p className="text-sm text-slate/70">Search by pact code, title, username, wallet, raw status, or stage.</p>
         </div>
         <label className="block sm:w-72">
           <span className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate/55">Search</span>
           <input
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Pact ID, title, stage, or wallet"
+            placeholder="Pact code, title, stage, or wallet"
             className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-3 text-sm outline-none placeholder:text-slate/40"
           />
         </label>

@@ -1,15 +1,10 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import pg from 'pg';
 import { apiConfig } from './config.js';
 
-let database = null;
+let postgresPool = null;
+let databaseReadyPromise = null;
 
-const schemaSql = `
-  PRAGMA journal_mode = WAL;
-  PRAGMA foreign_keys = ON;
-  PRAGMA busy_timeout = 5000;
-
+export const postgresSchemaSql = `
   CREATE TABLE IF NOT EXISTS pacts (
     pact_id INTEGER PRIMARY KEY,
     creator_address TEXT NOT NULL,
@@ -60,7 +55,7 @@ const schemaSql = `
   );
 
   CREATE TABLE IF NOT EXISTS pact_evidence (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     pact_id INTEGER NOT NULL,
     participant_address TEXT NOT NULL,
     evidence_uri TEXT NOT NULL,
@@ -84,6 +79,7 @@ const schemaSql = `
 
   CREATE TABLE IF NOT EXISTS sync_state (
     sync_key TEXT PRIMARY KEY,
+    deployment_key TEXT NOT NULL DEFAULT '',
     start_block INTEGER NOT NULL DEFAULT 0,
     last_block_number INTEGER NOT NULL DEFAULT 0,
     last_block_hash TEXT NOT NULL DEFAULT '',
@@ -136,41 +132,119 @@ const schemaSql = `
   CREATE INDEX IF NOT EXISTS idx_evidence_pact ON pact_evidence (pact_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_messages_pact ON pact_messages (pact_id, created_at ASC);
   CREATE INDEX IF NOT EXISTS idx_sessions_address ON sessions (address, expires_at);
+
+  ALTER TABLE sync_state ADD COLUMN IF NOT EXISTS deployment_key TEXT NOT NULL DEFAULT '';
+
+  ALTER TABLE pacts ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE pact_participants ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE pact_declarations ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE pact_evidence ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE usernames ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE sync_state ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE admin_queue ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE auth_nonces ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE pact_messages ENABLE ROW LEVEL SECURITY;
 `;
+
+function convertPlaceholders(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${++index}`);
+}
+
+async function createPostgresPool() {
+  const { Pool } = pg;
+  const pool = new Pool({
+    connectionString: apiConfig.databaseUrl,
+    max: apiConfig.databasePoolMax,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    ssl: /supabase\.(co|com)|pooler\.supabase\.com/i.test(apiConfig.databaseUrl)
+      ? { rejectUnauthorized: false }
+      : undefined
+  });
+
+  pool.on('error', (error) => {
+    console.error('Postgres pool idle client error', {
+      code: error?.code || '',
+      message: error?.message || String(error || '')
+    });
+  });
+
+  await pool.query(postgresSchemaSql);
+  return pool;
+}
+
+function isTransientPostgresError(error) {
+  const message = String(error?.message || '');
+  return (
+    ['EADDRNOTAVAIL', 'ECONNRESET', 'ETIMEDOUT'].includes(String(error?.code || '')) ||
+    /connection terminated|connection timeout|terminating connection|timeout exceeded/i.test(message)
+  );
+}
+
+async function queryWithRetry(sql, params = []) {
+  let db = await getDatabase();
+  try {
+    return await db.query(convertPlaceholders(sql), params);
+  } catch (error) {
+    if (!isTransientPostgresError(error)) {
+      throw error;
+    }
+
+    postgresPool = null;
+    databaseReadyPromise = null;
+    db = await getDatabase();
+    return db.query(convertPlaceholders(sql), params);
+  }
+}
 
 export function nowIso() {
   return new Date().toISOString();
 }
 
-export function getDatabase() {
-  if (database) {
-    return database;
+export async function getDatabase() {
+  if (!apiConfig.databaseUrl) {
+    throw new Error('DATABASE_URL is required. StakeWithFriends API now uses Supabase Postgres for all database reads and writes.');
   }
 
-  fs.mkdirSync(path.dirname(apiConfig.databasePath), { recursive: true });
-  database = new DatabaseSync(apiConfig.databasePath);
-  database.exec(schemaSql);
-  return database;
+  if (postgresPool) {
+    return postgresPool;
+  }
+
+  if (!databaseReadyPromise) {
+    databaseReadyPromise = createPostgresPool().catch((error) => {
+      postgresPool = null;
+      databaseReadyPromise = null;
+      throw error;
+    });
+  }
+
+  postgresPool = await databaseReadyPromise;
+  return postgresPool;
 }
 
-export function all(sql, params = []) {
-  return getDatabase().prepare(sql).all(...params);
+export async function all(sql, params = []) {
+  const result = await queryWithRetry(sql, params);
+  return result.rows;
 }
 
-export function get(sql, params = []) {
-  return getDatabase().prepare(sql).get(...params);
+export async function get(sql, params = []) {
+  const result = await queryWithRetry(sql, params);
+  return result.rows[0];
 }
 
-export function run(sql, params = []) {
-  return getDatabase().prepare(sql).run(...params);
+export async function run(sql, params = []) {
+  return queryWithRetry(sql, params);
 }
 
-export function ensureSyncState(syncKey, startBlock) {
+export async function ensureSyncState(syncKey, startBlock) {
   const now = nowIso();
-  run(
+  await run(
     `
       INSERT INTO sync_state (
         sync_key,
+        deployment_key,
         start_block,
         last_block_number,
         status,
@@ -178,15 +252,15 @@ export function ensureSyncState(syncKey, startBlock) {
         started_at,
         last_synced_at
       )
-      VALUES (?, ?, ?, 'idle', '', '', ?)
+      VALUES (?, '', ?, ?, 'idle', '', '', ?)
       ON CONFLICT(sync_key) DO NOTHING
     `,
     [syncKey, Number(startBlock), Math.max(Number(startBlock) - 1, 0), now]
   );
 }
 
-export function cleanupExpiredAuthRecords() {
+export async function cleanupExpiredAuthRecords() {
   const now = nowIso();
-  run(`DELETE FROM auth_nonces WHERE expires_at <= ?`, [now]);
-  run(`DELETE FROM sessions WHERE expires_at <= ?`, [now]);
+  await run(`DELETE FROM auth_nonces WHERE expires_at <= ?`, [now]);
+  await run(`DELETE FROM sessions WHERE expires_at <= ?`, [now]);
 }

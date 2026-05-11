@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom';
-import { QrCode, Wallet } from 'lucide-react';
+import { LogOut, QrCode, Sparkles, Wallet } from 'lucide-react';
+import { usePrivy } from '@privy-io/react-auth';
 import { useWalletStore } from '../store/useWalletStore.js';
 
 export default function ConnectCard({ compact = false }) {
+  const { ready: privyReady, authenticated, user, login, logout } = usePrivy();
   const connectInjected = useWalletStore((state) => state.connectInjected);
   const connectWalletConnect = useWalletStore((state) => state.connectWalletConnect);
   const connector = useWalletStore((state) => state.connector);
@@ -12,6 +14,14 @@ export default function ConnectCard({ compact = false }) {
   const injectedReady = useWalletStore((state) => state.injectedReady);
   const walletConnectReady = useWalletStore((state) => state.walletConnectReady);
   const isConnecting = status === 'connecting';
+  const privyLabel =
+    user?.wallet?.address ||
+    user?.email?.address ||
+    user?.linkedAccounts?.find((account) => account.type === 'wallet' && account.address)?.address ||
+    '';
+  const shortPrivyLabel = privyLabel?.startsWith('0x')
+    ? `${privyLabel.slice(0, 6)}...${privyLabel.slice(-4)}`
+    : privyLabel;
 
   return (
     <section className={`rounded-[32px] ${compact ? 'bg-white/85 p-5' : 'bg-ink p-6 text-sand'} shadow-glow`}>
@@ -20,14 +30,25 @@ export default function ConnectCard({ compact = false }) {
           <Wallet className="h-6 w-6" />
         </div>
         <div>
-          <p className={`font-display ${compact ? 'text-2xl text-ink' : 'text-3xl'}`}>Connect a Web3 wallet</p>
+          <p className={`font-display ${compact ? 'text-2xl text-ink' : 'text-3xl'}`}>Sign in to play</p>
           <p className={`mt-2 text-sm ${compact ? 'text-slate/70' : 'text-sand/70'}`}>
-            StakeWithFriends uses direct wallet auth and a simple on-chain escrow flow.
+            Privy allows signup with Google account, email, or wallet so chat and uploads stay tied to one identity.
           </p>
         </div>
       </div>
 
       <div className="mt-5 grid gap-3">
+        <button
+          type="button"
+          onClick={authenticated ? logout : login}
+          disabled={!privyReady}
+          className={`inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-4 text-base font-semibold ${
+            compact ? 'bg-coral text-white' : 'bg-sand text-ink'
+          } disabled:opacity-60`}
+        >
+          {authenticated ? <LogOut className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+          {authenticated ? `Signed in${shortPrivyLabel ? ` as ${shortPrivyLabel}` : ''}` : 'Sign up / log in with Privy'}
+        </button>
         <button
           type="button"
           onClick={connectInjected}
@@ -37,7 +58,7 @@ export default function ConnectCard({ compact = false }) {
           } disabled:opacity-60`}
         >
           <Wallet className="h-5 w-5" />
-          {isConnecting && connector !== 'walletconnect' ? 'Connecting browser wallet...' : 'Browser wallet'}
+          {isConnecting && connector !== 'walletconnect' ? 'Connecting wallet extension...' : 'Connect your wallet extension'}
         </button>
         <button
           type="button"
@@ -60,6 +81,11 @@ export default function ConnectCard({ compact = false }) {
       {walletConnectReady ? (
         <p className={`mt-3 text-sm ${compact ? 'text-slate/70' : 'text-sand/70'}`}>
           WalletConnect lets you scan from a mobile wallet instead of opening this PWA inside one.
+        </p>
+      ) : null}
+      {authenticated ? (
+        <p className={`mt-3 text-sm ${compact ? 'text-slate/70' : 'text-sand/70'}`}>
+          Privy is active. Pact chat and result uploads will use this signed-in wallet session.
         </p>
       ) : null}
       {error ? <p className="mt-3 text-sm text-rose-500">{error}</p> : null}

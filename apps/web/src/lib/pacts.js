@@ -34,8 +34,9 @@ import { getWalletClient, switchToSupportedChain } from './wallet.js';
 const publicClient = createPublicClient({
   chain: supportedChain,
   transport: http(protocolConfig.rpcUrl, {
-    retryCount: 6,
-    retryDelay: 400
+    retryCount: 1,
+    retryDelay: 250,
+    timeout: 5_000
   })
 });
 
@@ -229,18 +230,19 @@ function prioritizeDashboardPacts(pacts, currentAddress, limit = 0) {
   const normalizedCurrentAddress = normalizeAddress(currentAddress);
 
   if (!normalizedCurrentAddress) {
-    const ordered = list.sort((left, right) => Number(right?.id || 0) - Number(left?.id || 0));
+    const ordered = list
+      .filter((pact) => pact?.stage === 'Open For Join' || pact?.isOpen)
+      .sort((left, right) => Number(right?.id || 0) - Number(left?.id || 0));
     return limit > 0 ? ordered.slice(0, limit) : ordered;
   }
 
   const sortByNewest = (items) => items.sort((left, right) => Number(right?.id || 0) - Number(left?.id || 0));
   const participant = sortByNewest(list.filter((pact) => pact?.participantRole && pact.participantRole !== 'viewer'));
   const open = sortByNewest(list.filter((pact) => pact?.stage === 'Open For Join'));
-  const recent = sortByNewest(list);
   const seen = new Set();
   const prioritized = [];
 
-  for (const group of [participant, open, recent]) {
+  for (const group of [participant, open]) {
     for (const pact of group) {
       const pactId = Number(pact?.id || 0);
       if (!pactId || seen.has(pactId)) {
@@ -677,6 +679,7 @@ function buildPactView(
       : participantRole === 'counterparty'
         ? evidence.counterparty
         : '';
+  const currentUserOnChainEvidence = currentUserEvidence;
   const stage = deriveStage({
     rawStatus,
     counterparty,
@@ -717,6 +720,7 @@ function buildPactView(
         : { submitted: false };
   const hasAdminRole = Boolean(protocol.isAdmin || protocol.isArbiter);
   const hasArbiterRole = Boolean(protocol.isArbiter);
+  const isJoinedParticipant = participantRole === 'creator' || participantRole === 'counterparty';
   const missingDeclarerCanDispute =
     (participantRole === 'creator' && !creatorDeclaration.submitted && counterpartyDeclaration.submitted) ||
     (participantRole === 'counterparty' && !counterpartyDeclaration.submitted && creatorDeclaration.submitted);
@@ -751,12 +755,12 @@ function buildPactView(
     rawStatus === 'Active' &&
     declarationWindowClosed &&
     (!singleSubmissionPending || singleSubmitterGraceElapsed) &&
-    (participantRole !== 'viewer' || hasAdminRole);
+    (isJoinedParticipant || hasAdminRole);
   const canSubmitEvidence =
     Boolean(currentAddress) &&
     participantRole !== 'viewer' &&
     rawStatus === 'Disputed' &&
-    !currentUserEvidence;
+    !currentUserOnChainEvidence;
   const canAdminResolve = hasArbiterRole && rawStatus === 'Disputed';
 
   return {
@@ -790,7 +794,13 @@ function buildPactView(
     counterpartyDeclaration,
     creatorEvidence: evidence.creator,
     counterpartyEvidence: evidence.counterparty,
+    creatorOnChainEvidence: evidence.creator || '',
+    counterpartyOnChainEvidence: evidence.counterparty || '',
+    creatorEvidenceOnChain: Boolean(evidence.creator),
+    counterpartyEvidenceOnChain: Boolean(evidence.counterparty),
+    hasOnChainDisputeEvidence: Boolean(evidence.creator || evidence.counterparty),
     currentUserEvidence,
+    currentUserOnChainEvidence,
     participantRole,
     isOpen: counterparty === zeroAddress,
     canJoin,
@@ -1088,10 +1098,31 @@ export async function readPactById(pactId, currentAddress, options = {}) {
 
     return await fetchIndexedPactById(numericPactId, currentAddress);
   } catch (error) {
+    if (error?.status === 403) {
+      throw error;
+    }
+
+    if (options.skipChainFallback) {
+      throw error;
+    }
+
     try {
       const protocol = await readProtocolSnapshot(currentAddress);
-      return attachReadMeta(await readPactView(numericPactId, protocol, currentAddress), 'chain');
+      const pactView = await readPactView(numericPactId, protocol, currentAddress);
+      if (
+        !pactView.isOpen &&
+        pactView.participantRole === 'viewer' &&
+        !protocol.isAdmin &&
+        !protocol.isArbiter
+      ) {
+        throw new Error('This pact is only visible to its joined participants and arbiters.');
+      }
+      return attachReadMeta(pactView, 'chain');
     } catch (chainError) {
+      if (/only visible to its joined participants/i.test(chainError?.message || '')) {
+        throw chainError;
+      }
+
       const recentPactEntry = getRecentPactEntry(numericPactId);
       if (!recentPactEntry) {
         throw chainError || error;

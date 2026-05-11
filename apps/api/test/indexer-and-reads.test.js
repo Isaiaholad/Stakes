@@ -1,12 +1,6 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { after, beforeEach, test } from 'node:test';
+import { beforeEach, test } from 'node:test';
 import { encodeAbiParameters, encodeEventTopics, zeroAddress } from 'viem';
-
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'swf-api-tests-'));
-const databasePath = path.join(tempRoot, 'stakewithfriends.sqlite');
 
 const addresses = {
   stablecoin: '0x00000000000000000000000000000000000000a1',
@@ -23,7 +17,6 @@ const counterparty = '0x00000000000000000000000000000000000000c2';
 const outsider = '0x00000000000000000000000000000000000000c3';
 const admin = '0x00000000000000000000000000000000000000c4';
 
-process.env.DATABASE_PATH = databasePath;
 process.env.CORE_SYNC_MODE = 'log-backfill';
 process.env.USERNAME_SYNC_MODE = 'log-backfill';
 process.env.PACT_INDEX_START_BLOCK = '100';
@@ -166,10 +159,6 @@ function insertPact({
 
 beforeEach(() => {
   resetTables();
-});
-
-after(() => {
-  fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
 test('syncOnce ingests pact lifecycle logs, fee snapshots, declarations, and usernames from a cold backfill', async () => {

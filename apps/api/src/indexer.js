@@ -25,6 +25,27 @@ function normalizeAddress(value) {
   return String(value || '').toLowerCase();
 }
 
+function buildDeploymentKey(syncKey, addresses = {}, runtime = {}) {
+  const addressKeys =
+    syncKey === 'usernames'
+      ? ['usernameRegistry']
+      : ['stablecoin', 'protocolControl', 'pactVault', 'pactManager', 'submissionManager', 'pactResolutionManager'];
+  const scopedAddresses = Object.fromEntries(
+    addressKeys.map((key) => [key, normalizeAddress(addresses[key])])
+  );
+
+  return crypto
+    .createHash('sha256')
+    .update(
+      JSON.stringify({
+        syncKey,
+        chainId: Number(runtime.chainId || apiConfig.chainId || 0),
+        addresses: scopedAddresses
+      })
+    )
+    .digest('hex');
+}
+
 function normalizeSyncMode(value, fallback) {
   const normalized = String(value || fallback || '').trim().toLowerCase();
   return normalized || fallback;
@@ -34,12 +55,13 @@ function usernameHash(username) {
   return keccak256(stringToHex(String(username || '')));
 }
 
-function updateSyncState(syncKey, payload) {
-  const current = get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey]) || {};
-  run(
+async function updateSyncState(syncKey, payload) {
+  const current = (await get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey])) || {};
+  await run(
     `
       INSERT INTO sync_state (
         sync_key,
+        deployment_key,
         start_block,
         last_block_number,
         last_block_hash,
@@ -48,8 +70,9 @@ function updateSyncState(syncKey, payload) {
         started_at,
         last_synced_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(sync_key) DO UPDATE SET
+        deployment_key = excluded.deployment_key,
         start_block = excluded.start_block,
         last_block_number = excluded.last_block_number,
         last_block_hash = excluded.last_block_hash,
@@ -60,6 +83,7 @@ function updateSyncState(syncKey, payload) {
     `,
     [
       syncKey,
+      payload.deploymentKey ?? current.deployment_key ?? '',
       Number(payload.startBlock ?? current.start_block ?? 0),
       Number(payload.lastBlockNumber ?? current.last_block_number ?? 0),
       payload.lastBlockHash ?? current.last_block_hash ?? '',
@@ -71,12 +95,12 @@ function updateSyncState(syncKey, payload) {
   );
 }
 
-function upsertParticipant(pactId, participantAddress, role, timestampIso) {
+async function upsertParticipant(pactId, participantAddress, role, timestampIso) {
   if (!participantAddress || participantAddress === zeroAddress) {
     return;
   }
 
-  run(
+  await run(
     `
       INSERT INTO pact_participants (pact_id, participant_address, role, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
@@ -88,8 +112,8 @@ function upsertParticipant(pactId, participantAddress, role, timestampIso) {
   );
 }
 
-function refreshAdminQueue(pactId) {
-  const pact = get(
+async function refreshAdminQueue(pactId) {
+  const pact = await get(
     `
       SELECT creator_address, counterparty_address, raw_status
       FROM pacts
@@ -102,7 +126,7 @@ function refreshAdminQueue(pactId) {
     return;
   }
 
-  const evidenceRows = all(`SELECT participant_address, created_at FROM pact_evidence WHERE pact_id = ?`, [pactId]);
+  const evidenceRows = await all(`SELECT participant_address, created_at FROM pact_evidence WHERE pact_id = ?`, [pactId]);
   const creatorAddress = normalizeAddress(pact.creator_address);
   const counterpartyAddress = normalizeAddress(pact.counterparty_address);
   const hasCreatorEvidence = evidenceRows.some(
@@ -122,7 +146,7 @@ function refreshAdminQueue(pactId) {
   const lastEvidenceAt = evidenceRows.length ? evidenceRows[evidenceRows.length - 1].created_at : '';
   const updatedAt = nowIso();
 
-  run(
+  await run(
     `
       INSERT INTO admin_queue (
         pact_id,
@@ -174,7 +198,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
   const updatedAt = blockTime.iso;
 
   if (decoded.eventName === 'PactCreated') {
-    run(
+    await run(
       `
         INSERT INTO pacts (
           pact_id,
@@ -242,7 +266,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
   }
 
   if (decoded.eventName === 'PactJoined') {
-    run(
+    await run(
       `
         UPDATE pacts
         SET
@@ -276,7 +300,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
   }
 
   if (decoded.eventName === 'PactCancelled' || decoded.eventName === 'PactExpired') {
-    run(
+    await run(
       `
         UPDATE pacts
         SET
@@ -293,7 +317,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
   }
 
   if (decoded.eventName === 'PactDisputed') {
-    run(
+    await run(
       `
         UPDATE pacts
         SET
@@ -310,7 +334,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
   }
 
   if (decoded.eventName === 'PactResolved') {
-    run(
+    await run(
       `
         UPDATE pacts
         SET
@@ -337,12 +361,12 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
   }
 }
 
-function applyWinnerDeclared(log, decoded, blockTime) {
+async function applyWinnerDeclared(log, decoded, blockTime) {
   const pactId = Number(decoded.args.pactId);
   const address = normalizeAddress(decoded.args.user);
   const updatedAt = blockTime.iso;
 
-  run(
+  await run(
     `
       INSERT INTO pact_declarations (
         pact_id,
@@ -376,7 +400,7 @@ function applyWinnerDeclared(log, decoded, blockTime) {
   refreshAdminQueue(pactId);
 }
 
-function applyEvidenceSubmitted(log, decoded, blockTime) {
+async function applyEvidenceSubmitted(log, decoded, blockTime) {
   const pactId = Number(decoded.args.pactId);
   const address = normalizeAddress(decoded.args.user);
   const evidenceUri = String(decoded.args.evidenceUri || '').trim();
@@ -384,7 +408,7 @@ function applyEvidenceSubmitted(log, decoded, blockTime) {
     return;
   }
 
-  run(
+  await run(
     `
       INSERT INTO pact_evidence (
         pact_id,
@@ -415,9 +439,9 @@ function applyEvidenceSubmitted(log, decoded, blockTime) {
   refreshAdminQueue(pactId);
 }
 
-function applyFeeSnapshot(log, decoded, blockTime) {
+async function applyFeeSnapshot(log, decoded, blockTime) {
   const pactId = Number(decoded.args.pactId);
-  run(
+  await run(
     `
       UPDATE pacts
       SET
@@ -430,7 +454,7 @@ function applyFeeSnapshot(log, decoded, blockTime) {
   );
 }
 
-function applyUsernameEvent(decoded, blockTime) {
+async function applyUsernameEvent(decoded, blockTime) {
   const address = normalizeAddress(decoded.args.user);
 
   if (decoded.eventName === 'UsernameSet') {
@@ -439,7 +463,7 @@ function applyUsernameEvent(decoded, blockTime) {
       return;
     }
 
-    run(
+    await run(
       `
         INSERT INTO usernames (address, username, username_hash, updated_at)
         VALUES (?, ?, ?, ?)
@@ -454,7 +478,7 @@ function applyUsernameEvent(decoded, blockTime) {
   }
 
   if (decoded.eventName === 'UsernameCleared') {
-    run(`DELETE FROM usernames WHERE address = ?`, [address]);
+    await run(`DELETE FROM usernames WHERE address = ?`, [address]);
   }
 }
 
@@ -476,8 +500,8 @@ async function readLatestCheckpoint(runtime = {}) {
   };
 }
 
-function markSyncState(syncKey, startBlock, checkpoint, status = 'idle') {
-  updateSyncState(syncKey, {
+async function markSyncState(syncKey, startBlock, checkpoint, status = 'idle') {
+  await updateSyncState(syncKey, {
     startBlock: Number(startBlock),
     lastBlockNumber: Number(checkpoint?.latestBlockNumber || 0),
     lastBlockHash: checkpoint?.latestBlockHash || '',
@@ -488,12 +512,12 @@ function markSyncState(syncKey, startBlock, checkpoint, status = 'idle') {
   });
 }
 
-function upsertDeclarationState(pactId, participantAddress, declaration, updatedAt) {
+async function upsertDeclarationState(pactId, participantAddress, declaration, updatedAt) {
   if (!participantAddress || participantAddress === zeroAddress) {
     return;
   }
 
-  run(
+  await run(
     `
       INSERT INTO pact_declarations (
         pact_id,
@@ -524,14 +548,14 @@ function upsertDeclarationState(pactId, participantAddress, declaration, updated
   );
 }
 
-function upsertEvidenceState(pactId, participantAddress, evidenceUri, updatedAt) {
+async function upsertEvidenceState(pactId, participantAddress, evidenceUri, updatedAt) {
   const normalizedAddress = normalizeAddress(participantAddress);
   const normalizedEvidenceUri = String(evidenceUri || '').trim();
   if (!normalizedAddress || normalizedAddress === zeroAddress || !normalizedEvidenceUri) {
     return;
   }
 
-  run(
+  await run(
     `
       INSERT INTO pact_evidence (
         pact_id,
@@ -551,16 +575,40 @@ function upsertEvidenceState(pactId, participantAddress, evidenceUri, updatedAt)
   );
 }
 
-function listPactIdsToReconcile(nextPactId) {
-  const highestIndexedPactId = Number(get(`SELECT MAX(pact_id) AS pact_id FROM pacts`)?.pact_id || 0);
-  const activePactIds = all(
+async function prunePactIdsOutsideCurrentContract(nextPactId) {
+  const staleRows = await all(`SELECT pact_id FROM pacts WHERE pact_id >= ?`, [Number(nextPactId)]);
+  const stalePactIds = staleRows.map((row) => Number(row.pact_id)).filter(Boolean);
+  if (!stalePactIds.length) {
+    return;
+  }
+
+  const placeholders = stalePactIds.map(() => '?').join(', ');
+  await run(`DELETE FROM pact_messages WHERE pact_id IN (${placeholders})`, stalePactIds);
+  await run(`DELETE FROM pact_evidence WHERE pact_id IN (${placeholders})`, stalePactIds);
+  await run(`DELETE FROM pact_declarations WHERE pact_id IN (${placeholders})`, stalePactIds);
+  await run(`DELETE FROM pact_participants WHERE pact_id IN (${placeholders})`, stalePactIds);
+  await run(`DELETE FROM admin_queue WHERE pact_id IN (${placeholders})`, stalePactIds);
+  await run(`DELETE FROM pacts WHERE pact_id IN (${placeholders})`, stalePactIds);
+}
+
+async function listPactIdsToReconcile(nextPactId, { forceFullRange = false } = {}) {
+  if (forceFullRange) {
+    const pactIds = [];
+    for (let pactId = 1; pactId < nextPactId; pactId += 1) {
+      pactIds.push(pactId);
+    }
+    return pactIds;
+  }
+
+  const highestIndexedPactId = Number((await get(`SELECT MAX(pact_id) AS pact_id FROM pacts`))?.pact_id || 0);
+  const activePactIds = (await all(
     `
       SELECT pact_id
       FROM pacts
       WHERE raw_status NOT IN ('Resolved', 'Cancelled')
       ORDER BY pact_id ASC
     `
-  ).map((row) => Number(row.pact_id));
+  )).map((row) => Number(row.pact_id));
   const pactIds = new Set(activePactIds);
 
   for (let pactId = highestIndexedPactId + 1; pactId < nextPactId; pactId += 1) {
@@ -618,15 +666,38 @@ async function reconcileSinglePactFromState(pactId, addresses, runtime = {}) {
   }
 
   const counterparty = normalizeAddress(core[1]);
-  const existing = get(
+  let existing = await get(
     `
-      SELECT created_at, creation_tx_hash, creation_block_number, last_event_block_number, last_event_name, fee_recipient, fee_bps
+      SELECT
+        creator_address,
+        counterparty_address,
+        created_at,
+        creation_tx_hash,
+        creation_block_number,
+        last_event_block_number,
+        last_event_name,
+        fee_recipient,
+        fee_bps
       FROM pacts
       WHERE pact_id = ?
     `,
     [pactId]
   );
   const updatedAt = nowIso();
+  const pactIdentityChanged =
+    existing &&
+    (normalizeAddress(existing.creator_address) !== creator ||
+      normalizeAddress(existing.counterparty_address) !== counterparty);
+
+  if (pactIdentityChanged) {
+    await run(`DELETE FROM pact_messages WHERE pact_id = ?`, [pactId]);
+    await run(`DELETE FROM pact_evidence WHERE pact_id = ?`, [pactId]);
+    await run(`DELETE FROM pact_declarations WHERE pact_id = ?`, [pactId]);
+    await run(`DELETE FROM pact_participants WHERE pact_id = ?`, [pactId]);
+    await run(`DELETE FROM admin_queue WHERE pact_id = ?`, [pactId]);
+    existing = null;
+  }
+
   const feeSnapshot = await readContractState(
     {
       address: addresses.pactVault,
@@ -640,7 +711,7 @@ async function reconcileSinglePactFromState(pactId, addresses, runtime = {}) {
   const feeBps = Number(feeSnapshot?.[1] || existing?.fee_bps || 0);
   const feeInitialized = Boolean(feeSnapshot?.[2]);
 
-  run(
+  await run(
     `
       INSERT INTO pacts (
         pact_id,
@@ -793,7 +864,11 @@ async function reconcilePactsFromState(runtime = {}) {
     return;
   }
 
-  const pactIds = listPactIdsToReconcile(nextPactId);
+  await prunePactIdsOutsideCurrentContract(nextPactId);
+
+  const pactIds = await listPactIdsToReconcile(nextPactId, {
+    forceFullRange: Boolean(runtime.forceFullStateReconcile)
+  });
   if (!pactIds.length) {
     return;
   }
@@ -810,7 +885,7 @@ async function reconcileKnownUsernamesFromState(runtime = {}) {
     return;
   }
 
-  const participantAddresses = all(
+  const participantAddresses = (await all(
     `
       SELECT creator_address AS address FROM pacts
       UNION
@@ -818,7 +893,7 @@ async function reconcileKnownUsernamesFromState(runtime = {}) {
       UNION
       SELECT author_address AS address FROM pact_messages
     `
-  )
+  ))
     .map((row) => normalizeAddress(row.address))
     .filter((address) => address && address !== zeroAddress);
 
@@ -848,7 +923,7 @@ async function reconcileKnownUsernamesFromState(runtime = {}) {
       continue;
     }
 
-    run(
+    await run(
       `
         INSERT INTO usernames (address, username, username_hash, updated_at)
         VALUES (?, ?, ?, ?)
@@ -862,22 +937,72 @@ async function reconcileKnownUsernamesFromState(runtime = {}) {
   }
 }
 
+async function ensureDeploymentScope(syncKey, startBlock, addresses, runtime = {}) {
+  const deploymentKey = buildDeploymentKey(syncKey, addresses, runtime);
+  await ensureSyncState(syncKey, startBlock);
+
+  const state = await get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey]);
+  const existingDeploymentKey = String(state?.deployment_key || '');
+  const deploymentChanged = Boolean(existingDeploymentKey && existingDeploymentKey !== deploymentKey);
+
+  if (deploymentChanged) {
+    await clearIndexedRowsForSync(syncKey, { preservePactMetadata: false });
+    await updateSyncState(syncKey, {
+      deploymentKey,
+      startBlock: Number(startBlock),
+      lastBlockNumber: Math.max(Number(startBlock) - 1, 0),
+      lastBlockHash: '',
+      status: 'idle',
+      lastError: '',
+      startedAt: '',
+      lastSyncedAt: nowIso()
+    });
+    return {
+      deploymentKey,
+      forceFullStateReconcile: true
+    };
+  }
+
+  if (!existingDeploymentKey) {
+    await updateSyncState(syncKey, {
+      deploymentKey,
+      startBlock: Number(startBlock),
+      lastBlockNumber: Number(state?.last_block_number ?? Math.max(Number(startBlock) - 1, 0)),
+      lastBlockHash: state?.last_block_hash || '',
+      status: state?.status || 'idle',
+      lastError: state?.last_error || '',
+      startedAt: state?.started_at || '',
+      lastSyncedAt: state?.last_synced_at || nowIso()
+    });
+  }
+
+  return {
+    deploymentKey,
+    forceFullStateReconcile: syncKey === 'core' && !existingDeploymentKey
+  };
+}
+
 async function syncCoreFromStateSnapshot(startBlock, runtime = {}) {
-  ensureSyncState('core', startBlock);
+  const addresses = runtime.addresses || apiConfig.addresses;
+  const scope = await ensureDeploymentScope('core', startBlock, addresses, runtime);
   const checkpoint = await readLatestCheckpoint(runtime);
 
-  markSyncState('core', startBlock, checkpoint, 'syncing');
-  await reconcilePactsFromState(runtime);
-  markSyncState('core', startBlock, checkpoint, 'idle');
+  await markSyncState('core', startBlock, checkpoint, 'syncing');
+  await reconcilePactsFromState({
+    ...runtime,
+    forceFullStateReconcile: Boolean(runtime.forceFullStateReconcile || scope.forceFullStateReconcile)
+  });
+  await markSyncState('core', startBlock, checkpoint, 'idle');
 }
 
 async function syncUsernamesFromStateSnapshot(startBlock, runtime = {}) {
-  ensureSyncState('usernames', startBlock);
+  const addresses = runtime.addresses || apiConfig.addresses;
+  await ensureDeploymentScope('usernames', startBlock, addresses, runtime);
   const checkpoint = await readLatestCheckpoint(runtime);
 
-  markSyncState('usernames', startBlock, checkpoint, 'syncing');
+  await markSyncState('usernames', startBlock, checkpoint, 'syncing');
   await reconcileKnownUsernamesFromState(runtime);
-  markSyncState('usernames', startBlock, checkpoint, 'idle');
+  await markSyncState('usernames', startBlock, checkpoint, 'idle');
 }
 
 async function applyCoreLog(source, log, blockTimeCache, runtime = {}) {
@@ -930,7 +1055,7 @@ async function applyCoreLog(source, log, blockTimeCache, runtime = {}) {
     }
 
     if (decoded.eventName === 'PactDisputed') {
-      run(
+      await run(
         `
           UPDATE pacts
           SET raw_status = 'Disputed', last_event_block_number = ?, last_event_name = ?, updated_at = ?
@@ -1000,18 +1125,22 @@ async function readCheckpointHash(blockNumber, runtime = {}) {
   return block?.hash || '';
 }
 
-function clearIndexedRowsForSync(syncKey) {
+async function clearIndexedRowsForSync(syncKey, { preservePactMetadata = true } = {}) {
   if (syncKey === 'core') {
-    run(`DELETE FROM admin_queue`);
-    run(`DELETE FROM pact_declarations`);
-    run(`DELETE FROM pact_participants`);
-    run(`DELETE FROM pacts`);
-    run(`DELETE FROM pact_evidence WHERE source != 'catbox-metadata'`);
+    if (!preservePactMetadata) {
+      await run(`DELETE FROM pact_messages`);
+    }
+
+    await run(`DELETE FROM admin_queue`);
+    await run(`DELETE FROM pact_declarations`);
+    await run(`DELETE FROM pact_participants`);
+    await run(preservePactMetadata ? `DELETE FROM pact_evidence WHERE source != 'catbox-metadata'` : `DELETE FROM pact_evidence`);
+    await run(`DELETE FROM pacts`);
     return;
   }
 
   if (syncKey === 'usernames') {
-    run(`DELETE FROM usernames`);
+    await run(`DELETE FROM usernames`);
   }
 }
 
@@ -1025,8 +1154,8 @@ async function ensureReorgSafeCheckpoint(syncKey, startBlock, state, runtime = {
     return state;
   }
 
-  clearIndexedRowsForSync(syncKey);
-  updateSyncState(syncKey, {
+  await clearIndexedRowsForSync(syncKey);
+  await updateSyncState(syncKey, {
     startBlock: Number(startBlock),
     lastBlockNumber: Math.max(Number(startBlock) - 1, 0),
     lastBlockHash: '',
@@ -1036,12 +1165,13 @@ async function ensureReorgSafeCheckpoint(syncKey, startBlock, state, runtime = {
     lastSyncedAt: nowIso()
   });
 
-  return get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey]);
+  return await get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey]);
 }
 
 export async function syncLogSources({ syncKey, startBlock, sources, applyLog, runtime = {} }) {
-  ensureSyncState(syncKey, startBlock);
-  let state = get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey]);
+  const deploymentAddresses = runtime.addresses || apiConfig.addresses;
+  await ensureDeploymentScope(syncKey, startBlock, deploymentAddresses, runtime);
+  let state = await get(`SELECT * FROM sync_state WHERE sync_key = ?`, [syncKey]);
   state = await ensureReorgSafeCheckpoint(syncKey, startBlock, state, runtime);
   const latestBlockNumber = runtime.getLatestBlockNumber ? await runtime.getLatestBlockNumber() : await getLatestBlockNumber();
   let fromBlock = Math.max(Number(state?.last_block_number || Math.max(Number(startBlock) - 1, 0)) + 1, Number(startBlock));
@@ -1049,7 +1179,7 @@ export async function syncLogSources({ syncKey, startBlock, sources, applyLog, r
   const maxBatchesPerRun = Math.max(Number(runtime.syncMaxBatchesPerRun || apiConfig.syncMaxBatchesPerRun || 1), 1);
   let processedBatches = 0;
 
-  updateSyncState(syncKey, {
+  await updateSyncState(syncKey, {
     startBlock: Number(startBlock),
     lastBlockNumber: Number(state?.last_block_number || Math.max(Number(startBlock) - 1, 0)),
     status: 'syncing',
@@ -1082,7 +1212,7 @@ export async function syncLogSources({ syncKey, startBlock, sources, applyLog, r
 
     const lastLog = logs[logs.length - 1];
     const checkpointHash = lastLog?.blockHash || (await readCheckpointHash(toBlock, runtime));
-    updateSyncState(syncKey, {
+    await updateSyncState(syncKey, {
       startBlock: Number(startBlock),
       lastBlockNumber: toBlock,
       lastBlockHash: checkpointHash,
@@ -1097,7 +1227,7 @@ export async function syncLogSources({ syncKey, startBlock, sources, applyLog, r
   }
 
   if (fromBlock > latestBlockNumber) {
-    updateSyncState(syncKey, {
+    await updateSyncState(syncKey, {
       startBlock: Number(startBlock),
       lastBlockNumber: latestBlockNumber,
       status: 'idle',
@@ -1153,7 +1283,7 @@ export async function syncOnce(runtime = {}) {
   }
 }
 
-function sleep(ms) {
+async function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
@@ -1165,22 +1295,26 @@ export async function startIndexerLoop({ once = false } = {}) {
       await syncOnce();
     } catch (error) {
       const message = error?.message || 'Unknown sync error';
-      if (hasCoreContractsConfigured()) {
-        updateSyncState('core', {
-          startBlock: Number(apiConfig.contractStartBlocks.core),
-          status: 'error',
-          lastError: message,
-          lastSyncedAt: nowIso()
-        });
-      }
+      try {
+        if (hasCoreContractsConfigured()) {
+          await updateSyncState('core', {
+            startBlock: Number(apiConfig.contractStartBlocks.core),
+            status: 'error',
+            lastError: message,
+            lastSyncedAt: nowIso()
+          });
+        }
 
-      if (hasUsernameRegistryConfigured()) {
-        updateSyncState('usernames', {
-          startBlock: Number(apiConfig.contractStartBlocks.usernames),
-          status: 'error',
-          lastError: message,
-          lastSyncedAt: nowIso()
-        });
+        if (hasUsernameRegistryConfigured()) {
+          await updateSyncState('usernames', {
+            startBlock: Number(apiConfig.contractStartBlocks.usernames),
+            status: 'error',
+            lastError: message,
+            lastSyncedAt: nowIso()
+          });
+        }
+      } catch (syncStateError) {
+        console.error('Indexer could not persist sync error state:', syncStateError?.message || syncStateError);
       }
 
       if (once) {

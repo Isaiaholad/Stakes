@@ -1,15 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const uploadFileToCatbox = vi.fn();
-const signWalletMessage = vi.fn();
+const getAccessToken = vi.fn();
 
-vi.mock('./catbox.js', () => ({
-  isCatboxUploadConfigured: () => true,
-  uploadFileToCatbox
-}));
-
-vi.mock('./wallet.js', () => ({
-  signWalletMessage
+vi.mock('@privy-io/react-auth', () => ({
+  getAccessToken
 }));
 
 function jsonResponse(payload, status = 200) {
@@ -24,40 +18,29 @@ function jsonResponse(payload, status = 200) {
 describe('managed evidence uploads', () => {
   beforeEach(() => {
     global.fetch = vi.fn();
-    uploadFileToCatbox.mockReset();
-    signWalletMessage.mockReset();
+    getAccessToken.mockReset();
+    window.localStorage.clear();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('uploads to Catbox, stores evidence metadata, and returns the managed evidence summary', async () => {
-    signWalletMessage.mockResolvedValue('0xsigned');
-    uploadFileToCatbox.mockResolvedValue({
-      name: 'proof.png',
-      url: 'https://files.catbox.moe/proof.png'
-    });
-    global.fetch
-      .mockResolvedValueOnce(jsonResponse({ authenticated: false }))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          message: 'Sign this message to verify your wallet for StakeWithFriends evidence uploads.'
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authenticated: true,
-          address: '0xabc'
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authenticated: true,
-          address: '0xabc'
-        })
-      )
-      .mockResolvedValueOnce(jsonResponse({ ok: true }, 201));
+  it('uploads through the managed backend endpoint and returns the evidence summary', async () => {
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({
+        evidence: {
+          name: 'proof.png',
+          url: 'https://rjhwefsorvhnflvwnkud.supabase.co/storage/v1/object/public/evidence/pacts/12/proof.webp',
+          objectKey: 'pacts/12/0xabc/proof.webp',
+          contentHashSha256: 'compressedbeef',
+          mimeType: 'image/webp',
+          sizeBytes: 2,
+          originalSizeBytes: 3,
+          source: 'supabase-storage'
+        }
+      }, 201)
+    );
     vi.spyOn(globalThis.crypto.subtle, 'digest').mockResolvedValue(new Uint8Array([0xde, 0xad, 0xbe, 0xef]).buffer);
 
     const file = {
@@ -78,70 +61,27 @@ describe('managed evidence uploads', () => {
       })
     ).resolves.toEqual({
       name: 'proof.png',
-      url: 'https://files.catbox.moe/proof.png',
-      contentHashSha256: 'deadbeef',
-      mimeType: 'image/png',
-      sizeBytes: 3
+      url: 'https://rjhwefsorvhnflvwnkud.supabase.co/storage/v1/object/public/evidence/pacts/12/proof.webp',
+      objectKey: 'pacts/12/0xabc/proof.webp',
+      contentHashSha256: 'compressedbeef',
+      originalContentHashSha256: 'deadbeef',
+      mimeType: 'image/webp',
+      sizeBytes: 2,
+      originalSizeBytes: 3,
+      source: 'supabase-storage',
+      uploadWarning: ''
     });
 
-    expect(signWalletMessage).toHaveBeenCalledWith(
-      '0xabc',
-      'Sign this message to verify your wallet for StakeWithFriends evidence uploads.'
-    );
-    expect(uploadFileToCatbox).toHaveBeenCalledWith(file);
     expect(global.fetch).toHaveBeenNthCalledWith(
       1,
-      '/api/auth/session',
-      expect.objectContaining({
-        credentials: 'include'
-      })
-    );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      2,
-      '/api/auth/nonce',
+      '/api/evidence/upload',
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',
-        body: JSON.stringify({
-          address: '0xabc'
-        })
+        body: expect.any(FormData)
       })
     );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      3,
-      '/api/auth/verify',
-      expect.objectContaining({
-        method: 'POST',
-        credentials: 'include',
-        body: JSON.stringify({
-          address: '0xabc',
-          signature: '0xsigned'
-        })
-      })
-    );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      4,
-      '/api/auth/session',
-      expect.objectContaining({
-        credentials: 'include'
-      })
-    );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      5,
-      '/api/evidence/metadata',
-      expect.objectContaining({
-        method: 'POST',
-        credentials: 'include',
-        body: JSON.stringify({
-          pactId: 12,
-          uri: 'https://files.catbox.moe/proof.png',
-          contentHashSha256: 'deadbeef',
-          mimeType: 'image/png',
-          sizeBytes: 3,
-          originalName: 'proof.png'
-        })
-      })
-    );
+    expect(global.fetch.mock.calls[0][1].body.get('address')).toBe('0xabc');
 
     global.fetch.mockResolvedValueOnce(
       jsonResponse({
@@ -152,5 +92,49 @@ describe('managed evidence uploads', () => {
     await expect(readPactEvidenceHistory(12, '0xabc')).resolves.toEqual([
       { id: 1, evidence_uri: 'https://files.catbox.moe/proof.png' }
     ]);
+  });
+
+  it('blocks oversized evidence before calling the upload API', async () => {
+    const { uploadManagedEvidence } = await import('./evidence.js');
+    const oversizedImage = {
+      name: 'huge.png',
+      type: 'image/png',
+      size: 1024 * 1024 + 1,
+      async arrayBuffer() {
+        return new Uint8Array([1]).buffer;
+      }
+    };
+
+    await expect(
+      uploadManagedEvidence({
+        pactId: 12,
+        address: '0xabc',
+        file: oversizedImage
+      })
+    ).rejects.toThrow('Image evidence must be 1 MB or smaller.');
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported dispute evidence types', async () => {
+    const { uploadManagedEvidence } = await import('./evidence.js');
+    const pdfFile = {
+      name: 'proof.pdf',
+      type: 'application/pdf',
+      size: 1000,
+      async arrayBuffer() {
+        return new Uint8Array([1]).buffer;
+      }
+    };
+
+    await expect(
+      uploadManagedEvidence({
+        pactId: 12,
+        address: '0xabc',
+        file: pdfFile
+      })
+    ).rejects.toThrow('Evidence must be an image or video file.');
+
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

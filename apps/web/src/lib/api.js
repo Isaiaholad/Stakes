@@ -5,22 +5,33 @@ function joinUrl(pathname) {
   return `${apiBaseUrl}${normalizedPath}`;
 }
 
+let globalAuthToken = '';
+
+export function setGlobalAuthToken(token) {
+  globalAuthToken = token || '';
+}
+
 function readSessionToken() {
   if (typeof window === 'undefined') {
     return '';
   }
 
-  return window.localStorage?.getItem('swf_session_id') || '';
+  return globalAuthToken || window.localStorage?.getItem('swf_session_id') || '';
+}
+
+export function hasAuthToken() {
+  return Boolean(readSessionToken());
 }
 
 export async function fetchJson(pathname, options = {}) {
   const sessionToken = readSessionToken();
+  const isFormDataBody = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const response = await fetch(joinUrl(pathname), {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.body && !isFormDataBody ? { 'Content-Type': 'application/json' } : {}),
       ...(options.headers || {})
     },
     ...options

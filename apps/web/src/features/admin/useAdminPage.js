@@ -10,6 +10,7 @@ import {
   settleAfterDeclarationWindow
 } from '../../lib/pacts.js';
 import { isProtocolConfigured } from '../../lib/contracts.js';
+import { buildTransactionToast } from '../../lib/transactions.js';
 import { useNow } from '../../hooks/useNow.js';
 import { useToastStore } from '../../store/useToastStore.js';
 import { useWalletStore } from '../../store/useWalletStore.js';
@@ -74,8 +75,12 @@ export function useAdminPage() {
   );
   const protocolExposure = useMemo(() => searchedPacts.reduce((total, pact) => total + getEscrowExposure(pact), 0), [searchedPacts]);
   const disputedPacts = groups.disputes.filter((pact) => pact.rawStatus === 'Disputed');
-  const creatorProofCount = disputedPacts.filter((pact) => Boolean(pact.creatorEvidence?.trim())).length;
-  const counterpartyProofCount = disputedPacts.filter((pact) => Boolean(pact.counterpartyEvidence?.trim())).length;
+  const creatorProofCount = disputedPacts.filter((pact) =>
+    Boolean(pact.creatorEvidenceOnChain || pact.creatorOnChainEvidence?.trim())
+  ).length;
+  const counterpartyProofCount = disputedPacts.filter((pact) =>
+    Boolean(pact.counterpartyEvidenceOnChain || pact.counterpartyOnChainEvidence?.trim())
+  ).length;
   const stageCounts = useMemo(() => {
     const counts = new Map();
 
@@ -96,12 +101,14 @@ export function useAdminPage() {
   };
 
   const createMutationHandlers = (successTitle, errorTitle) => ({
-    onSuccess: async () => {
+    onSuccess: async (receipt) => {
       await refreshAdminData();
       showToast({
         variant: 'success',
         title: successTitle,
-        message: 'The on-chain action was confirmed.'
+        ...buildTransactionToast(receipt, {
+          message: 'The on-chain admin action was confirmed.'
+        })
       });
     },
     onError: (error) => {
@@ -141,16 +148,18 @@ export function useAdminPage() {
   };
 
   const getDisputeTiming = (pactId, pact) => {
-    const creatorHasEvidence = Boolean(pact.creatorEvidence?.trim());
-    const counterpartyHasEvidence = Boolean(pact.counterpartyEvidence?.trim());
+    const creatorHasEvidence = Boolean(pact.creatorEvidenceOnChain || pact.creatorOnChainEvidence?.trim());
+    const counterpartyHasEvidence = Boolean(pact.counterpartyEvidenceOnChain || pact.counterpartyOnChainEvidence?.trim());
+    const hasStoredUploads = Boolean(pact.creatorEvidence?.trim() || pact.counterpartyEvidence?.trim());
     const disputeOpenedAt = disputeOpenedAtByPactId.get(pactId) || 0;
     const disputeTimeoutAt = disputeOpenedAt > 0 ? new Date(disputeOpenedAt * 1000 + disputeTimeoutMs).toISOString() : null;
     const adminReviewReady =
-      pact.rawStatus === 'Disputed' && (creatorHasEvidence || counterpartyHasEvidence);
+      pact.rawStatus === 'Disputed' && Boolean(pact.hasOnChainDisputeEvidence || creatorHasEvidence || counterpartyHasEvidence);
 
     return {
       creatorHasEvidence,
       counterpartyHasEvidence,
+      hasStoredUploads,
       disputeTimeoutAt,
       adminReviewReady
     };

@@ -169,7 +169,7 @@ export async function runKeeperPass() {
   keeperPassInFlight = (async () => {
     const gracePeriodSeconds = await readSingleSubmitterGracePeriodSeconds();
     const { account, walletClient } = createKeeperClients();
-    const candidateRows = all(
+    const candidateRows = await all(
       `
         SELECT pact_id
         FROM pacts

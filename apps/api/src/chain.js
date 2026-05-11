@@ -163,8 +163,9 @@ export const usernameRegistryEventAbi = [
 
 export const publicClient = createPublicClient({
   transport: http(apiConfig.rpcUrl, {
-    retryCount: 6,
-    retryDelay: 400
+    retryCount: 1,
+    retryDelay: 250,
+    timeout: 5_000
   })
 });
 

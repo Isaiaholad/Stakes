@@ -126,6 +126,15 @@ PACT_MANAGER_ADDRESS=0xYourPactManagerAddress
 SUBMISSION_MANAGER_ADDRESS=0xYourSubmissionManagerAddress
 PACT_RESOLUTION_MANAGER_ADDRESS=0xYourPactResolutionManagerAddress
 USERNAME_REGISTRY_ADDRESS=0xYourUsernameRegistryAddress
+MAX_JSON_BODY_BYTES=8388608
+STORAGE_MODE=catbox-public
+CATBOX_PUBLIC_BASE_URL=https://files.catbox.moe
+AI_ANALYSIS_PROVIDER=ollama
+EFOOTBALL_OCR_CONFIDENCE_THRESHOLD=0.6
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_VISION_MODEL=llava
+OPENAI_API_KEY=
+OPENAI_VISION_MODEL=gpt-4.1-mini
 AUTONOMOUS_KEEPER_ENABLED=false
 AUTONOMOUS_KEEPER_PRIVATE_KEY=
 AUTONOMOUS_KEEPER_POLL_INTERVAL_MS=15000
@@ -156,6 +165,7 @@ Supply `PRIVATE_KEY` only at runtime from your terminal or CI secret store, not 
 - On Vercel, set the project root to `apps/web`, build with `npm run build`, and publish `dist`.
 - The web app does not need a private key on Vercel.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied at runtime.
+- eFootball winner detection runs `efootball-ocr` first, then falls back to Ollama vision when OCR is uncertain. Install Python deps with `python3 -m pip install -r apps/api/requirements.txt`; set `OPENAI_API_KEY` only if you choose `AI_ANALYSIS_PROVIDER=openai` or `auto`.
 - For contract deployment, pass the deployer key only at runtime, for example:
 
 ```bash

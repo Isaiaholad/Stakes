@@ -7,8 +7,19 @@ contracts/cache/
 .env
 .env.local
 .DS_Store
+.vite/
+*.log
 
-# SQLite databases (runtime data, not source code)
+# Python/OCR local runtime
+apps/api/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local database files are runtime data, not source code.
+apps/api/data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

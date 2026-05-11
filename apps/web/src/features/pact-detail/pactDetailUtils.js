@@ -1,5 +1,6 @@
 import { Flag, Gavel, Shield } from 'lucide-react';
 import { formatCountdown, formatDuration, shortenAddress } from '../../lib/formatters.js';
+import { getReceiptStatusMessage } from '../../lib/transactions.js';
 import { zeroAddress } from 'viem';
 
 export function getWalletInitials(walletAddress) {
@@ -39,18 +40,25 @@ export function getDeclarationButtonShell(tone, isDisabled) {
   ].join(' ');
 }
 
-export function getReceiptStatusMessage(receipt) {
-  if (!receipt) {
-    return '';
-  }
-
-  const hash = receipt.transactionHash || '';
-  const shortHash = hash ? `${hash.slice(0, 10)}...${hash.slice(-8)}` : 'Unknown hash';
-  return `Status: ${receipt.status}. Tx hash: ${shortHash}.`;
-}
+export { getReceiptStatusMessage };
 
 export function getStageMessage(pact) {
   const declarationWindowLabel = formatDuration(pact.declarationWindowSeconds);
+  const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
+  if (isEfootball) {
+    return (
+      {
+        Active: 'Both stakes are locked. When the match ends, upload the final eFootball result screenshot for AI winner detection.',
+        'Declaration Open': `The match window is over. Upload the final result screenshot so AI can detect and submit the winner during the ${declarationWindowLabel} result window.`,
+        'Result Submitted': 'One AI result submission is already on-chain. If the other side stays silent through the result window and grace period, that result wins automatically.',
+        'Review Period': 'Only one AI result submission was made. The missing side can still raise a dispute during the 30-minute review period.',
+        'Ready To Finalize': 'Both AI result submissions match. StakeWithFriends is ready to auto-settle the payout from the pact page.',
+        'Needs Dispute': 'AI result submissions do not match. StakeWithFriends can move the pact into dispute for arbiter review.',
+        'Settlement Due': 'The result window closed. The pact now settles into a split, a lone detected winner, or a dispute for conflicting submissions.'
+      }[pact.stage] || null
+    ) || getStageMessage({ ...pact, eventType: '' });
+  }
+
   return (
     {
       'Open For Join': 'This pact is public and waiting for the first counterparty to reserve the matching stake.',
@@ -74,6 +82,7 @@ export function getStageMessage(pact) {
 export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
   const eventEnded = referenceTime >= new Date(pact.eventEnd).getTime();
   const deadlineEnded = referenceTime > new Date(pact.submissionDeadline).getTime();
+  const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
 
   if (pact.rawStatus === 'Resolved') {
     return {
@@ -122,8 +131,10 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
 
   if (!eventEnded) {
     return {
-      title: 'Final result opens when the pact ends',
-      message: `Participants can declare the result after the event duration runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`,
+      title: isEfootball ? 'Screenshot review opens when the pact ends' : 'Final result opens when the pact ends',
+      message: isEfootball
+        ? `Upload the final eFootball screenshot after the match window runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`
+        : `Participants can declare the result after the event duration runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`,
       shell: 'border-slate/10 bg-sand/65 text-slate/80',
       iconColor: 'text-slate/60',
       Icon: Flag
@@ -132,8 +143,10 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
 
   if (pact.stage === 'Declaration Open') {
     return {
-      title: 'Final result waiting on declarations',
-      message: `The pact has ended. Either side can declare the winner during the ${formatDuration(pact.declarationWindowSeconds)} declaration window.`,
+      title: isEfootball ? 'Final result waiting on screenshot' : 'Final result waiting on declarations',
+      message: isEfootball
+        ? `The pact has ended. Upload the final result screenshot so AI can detect and submit the winner during the ${formatDuration(pact.declarationWindowSeconds)} result window.`
+        : `The pact has ended. Either side can declare the winner during the ${formatDuration(pact.declarationWindowSeconds)} declaration window.`,
       shell: 'border-indigo-200 bg-indigo-50 text-indigo-950',
       iconColor: 'text-indigo-700',
       Icon: Flag
@@ -142,8 +155,10 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
 
   if (pact.stage === 'Result Submitted') {
     return {
-      title: 'One declaration received',
-      message: 'One side already declared. If the other side stays silent through the declaration window and grace period, that declaration wins automatically.',
+      title: isEfootball ? 'One AI result submitted' : 'One declaration received',
+      message: isEfootball
+        ? 'One AI result submission is on-chain. If the other side stays silent through the result window and grace period, that detected result wins automatically.'
+        : 'One side already declared. If the other side stays silent through the declaration window and grace period, that declaration wins automatically.',
       shell: 'border-indigo-200 bg-indigo-50 text-indigo-950',
       iconColor: 'text-indigo-700',
       Icon: Flag

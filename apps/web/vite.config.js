@@ -17,9 +17,11 @@ export default defineConfig(({ mode }) => {
         manifest: false,
         includeAssets: ['icons/icon.svg', 'icons/maskable-icon.svg'],
         workbox: {
+          clientsClaim: true,
+          skipWaiting: true,
           cleanupOutdatedCaches: true,
-          navigateFallback: '/offline.html',
-          globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+          globPatterns: ['**/*.{js,css,svg,png,webmanifest}'],
           runtimeCaching: [
             {
               urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
@@ -30,7 +32,7 @@ export default defineConfig(({ mode }) => {
             },
             {
               urlPattern: ({ request }) => request.destination === 'document',
-              handler: 'NetworkFirst',
+              handler: 'NetworkOnly',
               options: {
                 cacheName: 'documents'
               }
@@ -40,17 +42,6 @@ export default defineConfig(({ mode }) => {
               handler: 'StaleWhileRevalidate',
               options: {
                 cacheName: 'assets'
-              }
-            },
-            {
-              urlPattern: ({ url }) =>
-                url.pathname.startsWith('/pact/') ||
-                url.pathname.startsWith('/vault') ||
-                url.pathname.startsWith('/explore') ||
-                url.pathname.startsWith('/create'),
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'app-routes'
               }
             },
             {

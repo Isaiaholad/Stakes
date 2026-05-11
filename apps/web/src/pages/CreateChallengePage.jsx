@@ -7,6 +7,8 @@ import ConfigBanner from '../components/ConfigBanner.jsx';
 import ConnectCard from '../components/ConnectCard.jsx';
 import { hasUsernameRegistryConfigured, isProtocolConfigured } from '../lib/contracts.js';
 import { formatDuration, formatToken, shortenAddress } from '../lib/formatters.js';
+import { buildPactPath } from '../lib/pactIds.js';
+import { buildTransactionToast } from '../lib/transactions.js';
 import {
   createPact,
   isValidUsername,
@@ -16,8 +18,9 @@ import {
   resolveUsernameToAddress
 } from '../lib/pacts.js';
 import { useWalletStore } from '../store/useWalletStore.js';
+import { useToastStore } from '../store/useToastStore.js';
 
-const presets = ['Chess Match Pact', 'Football Match Pact', 'Call Of Duty Pact'];
+const presets = ['eFootball'];
 const customPactTypeValue = '__custom__';
 const minimumEventDurationMinutes = 5;
 const defaultDeclarationWindowMinutes = 20;
@@ -59,6 +62,7 @@ export default function CreateChallengePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const address = useWalletStore((state) => state.address);
+  const showToast = useToastStore((state) => state.showToast);
   const configured = isProtocolConfigured();
   const usernameRegistryConfigured = hasUsernameRegistryConfigured();
   const [form, setForm] = useState({
@@ -69,7 +73,8 @@ export default function CreateChallengePage() {
     counterparty: '',
     openToPublic: false,
     eventDurationMinutes: String(minimumEventDurationMinutes),
-    declarationWindowMinutes: String(defaultDeclarationWindowMinutes)
+    declarationWindowMinutes: String(defaultDeclarationWindowMinutes),
+    inGameUsername: ''
   });
 
   const vaultQuery = useQuery({
@@ -85,7 +90,13 @@ export default function CreateChallengePage() {
   const stablecoinDecimals = Number(vaultQuery.data?.decimals || 6);
   const tokenStep = stablecoinDecimals > 0 ? `0.${'0'.repeat(Math.max(stablecoinDecimals - 1, 0))}1` : '1';
   const resolvedTitle = form.pactType === customPactTypeValue ? form.customTitle.trim() : form.pactType;
-  const composedDescription = useMemo(() => String(form.description || '').trim(), [form.description]);
+  const composedDescription = useMemo(() => {
+    let desc = String(form.description || '').trim();
+    if (form.pactType === 'eFootball' && form.inGameUsername.trim()) {
+      desc = desc ? `${desc}\n\nCreator's in-game username: ${form.inGameUsername.trim()}` : `Creator's in-game username: ${form.inGameUsername.trim()}`;
+    }
+    return desc;
+  }, [form.description, form.pactType, form.inGameUsername]);
   const eventDurationSeconds = useMemo(() => Math.floor(requestedEventDurationMinutes * 60), [requestedEventDurationMinutes]);
   const declarationWindowSeconds = useMemo(
     () => Math.floor(requestedDeclarationWindowMinutes * 60),
@@ -113,6 +124,8 @@ export default function CreateChallengePage() {
     validationError = 'Enter a stake amount greater than zero.';
   } else if (!resolvedTitle) {
     validationError = 'Enter a custom pact type.';
+  } else if (form.pactType === 'eFootball' && !form.inGameUsername.trim()) {
+    validationError = 'Please enter your in-game username for eFootball.';
   } else if (!form.openToPublic && !counterpartyValue) {
     validationError = 'Add the counterparty username or switch to an open pact.';
   } else if (!form.openToPublic && !usernameRegistryConfigured) {
@@ -168,7 +181,14 @@ export default function CreateChallengePage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ['vault', address] });
-      navigate(result?.pactId ? `/pact/${result.pactId}` : '/');
+      showToast({
+        variant: 'success',
+        title: 'Pact created',
+        ...buildTransactionToast(result?.receipt, {
+          message: 'Your pact is live on-chain.'
+        })
+      });
+      navigate(result?.pactId ? buildPactPath(result.pactId) : '/');
     }
   });
 
@@ -255,6 +275,20 @@ export default function CreateChallengePage() {
             className="min-h-[110px] w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none"
           />
         </label>
+
+        {form.pactType === 'eFootball' ? (
+          <label className="block">
+            <FieldLabel tip="Your exact in-game username is required to verify the match winner automatically using OCR.">
+              In-game username
+            </FieldLabel>
+            <input
+              value={form.inGameUsername}
+              onChange={(event) => setForm((current) => ({ ...current, inGameUsername: event.target.value }))}
+              placeholder="Enter your exact eFootball username"
+              className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none placeholder:text-slate/40"
+            />
+          </label>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block">

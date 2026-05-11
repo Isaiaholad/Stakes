@@ -47,7 +47,7 @@ export default function AdminPactSection({
       ) : (
         <EmptyState
           title={emptyTitle}
-          body={searchValue ? 'Try a different pact ID, username, wallet, title, stage, or status.' : emptyBody}
+          body={searchValue ? 'Try a different pact code, username, wallet, title, stage, or status.' : emptyBody}
         />
       )}
     </AdminSectionCard>

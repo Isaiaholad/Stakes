@@ -1,8 +1,29 @@
-import { fetchJson } from './api.js';
+import { fetchJson, setGlobalAuthToken } from './api.js';
+import { getAccessToken } from '@privy-io/react-auth';
 import { signWalletMessage } from './wallet.js';
 
 function normalizeAddress(value) {
   return String(value || '').toLowerCase();
+}
+
+function clearStoredAuthToken() {
+  setGlobalAuthToken('');
+  if (typeof window !== 'undefined') {
+    window.localStorage?.removeItem('swf_session_id');
+  }
+}
+
+async function readWalletSessionOrNull() {
+  try {
+    return await readWalletSession();
+  } catch (error) {
+    if (Number(error?.status || 0) === 401) {
+      clearStoredAuthToken();
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function readWalletSession() {
@@ -10,40 +31,57 @@ export async function readWalletSession() {
 }
 
 async function createWalletSession(normalizedAddress, options = {}) {
+  const accessToken = await getAccessToken().catch(() => '');
+  if (accessToken) {
+    setGlobalAuthToken(accessToken);
+    if (typeof window !== 'undefined') {
+      window.localStorage?.setItem('swf_session_id', accessToken);
+    }
+
+    let session = await readWalletSessionOrNull();
+    if (!session?.authenticated || normalizeAddress(session.address) !== normalizedAddress) {
+      const refreshedAccessToken = await getAccessToken().catch(() => '');
+      if (refreshedAccessToken) {
+        setGlobalAuthToken(refreshedAccessToken);
+        if (typeof window !== 'undefined') {
+          window.localStorage?.setItem('swf_session_id', refreshedAccessToken);
+        }
+      }
+      session = await readWalletSessionOrNull();
+    }
+
+    if (session?.authenticated && normalizeAddress(session.address) === normalizedAddress) {
+      return session;
+    }
+  }
+
+  return await createSignedWalletSession(normalizedAddress, options);
+}
+
+async function createSignedWalletSession(normalizedAddress) {
   const challenge = await fetchJson('/auth/nonce', {
     method: 'POST',
-    body: JSON.stringify({ address: normalizedAddress })
+    body: JSON.stringify({
+      address: normalizedAddress
+    })
   });
   const signature = await signWalletMessage(normalizedAddress, challenge.message);
-
-  const verifyPayload = await fetchJson('/auth/verify', {
+  const session = await fetchJson('/auth/verify', {
     method: 'POST',
     body: JSON.stringify({
       address: normalizedAddress,
       signature
     })
   });
-  if (verifyPayload?.sessionId && typeof window !== 'undefined') {
-    window.localStorage?.setItem('swf_session_id', verifyPayload.sessionId);
+
+  if (!session?.authenticated || normalizeAddress(session.address) !== normalizedAddress || !session.sessionId) {
+    throw new Error('Wallet sign-in could not be verified. Try reconnecting your wallet.');
   }
 
-  let session = await readWalletSession();
-  if (!session.authenticated || normalizeAddress(session.address) !== normalizedAddress) {
-    // Give the browser a brief moment to persist the Set-Cookie header.
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    session = await readWalletSession();
+  setGlobalAuthToken(session.sessionId);
+  if (typeof window !== 'undefined') {
+    window.localStorage?.setItem('swf_session_id', session.sessionId);
   }
-
-  if (!session.authenticated || normalizeAddress(session.address) !== normalizedAddress) {
-    if (options.allowUnauthenticated) {
-      return {
-        authenticated: false,
-        address: normalizedAddress
-      };
-    }
-    throw new Error('This browser did not keep the chat sign-in session. Allow cookies for this site, then try again.');
-  }
-
   return session;
 }
 
@@ -61,8 +99,8 @@ export async function ensureWalletSession(
     return createWalletSession(normalizedAddress, options);
   }
 
-  const currentSession = await readWalletSession();
-  if (currentSession.authenticated && normalizeAddress(currentSession.address) === normalizedAddress) {
+  const currentSession = await readWalletSessionOrNull();
+  if (currentSession?.authenticated && normalizeAddress(currentSession.address) === normalizedAddress) {
     return currentSession;
   }
 

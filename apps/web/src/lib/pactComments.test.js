@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const getAccessToken = vi.fn();
 const signWalletMessage = vi.fn();
+
+vi.mock('@privy-io/react-auth', () => ({
+  getAccessToken
+}));
 
 vi.mock('./wallet.js', () => ({
   signWalletMessage
@@ -17,7 +22,11 @@ function jsonResponse(payload, status = 200) {
 
 describe('shared pact chat API', () => {
   beforeEach(() => {
+    vi.resetModules();
     global.fetch = vi.fn();
+    window.localStorage.clear();
+    getAccessToken.mockReset();
+    getAccessToken.mockResolvedValue('privy-token');
     signWalletMessage.mockReset();
     signWalletMessage.mockResolvedValue('0xsigned');
   });
@@ -58,17 +67,6 @@ describe('shared pact chat API', () => {
   it('posts a shared chat message through a wallet-backed session', async () => {
     global.fetch
       .mockResolvedValueOnce(jsonResponse({ authenticated: false }))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          message: 'Sign this message to verify your wallet for StakeWithFriends chat.'
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authenticated: true,
-          address: '0xabc'
-        })
-      )
       .mockResolvedValueOnce(
         jsonResponse({
           authenticated: true,
@@ -112,40 +110,23 @@ describe('shared pact chat API', () => {
     );
     expect(global.fetch).toHaveBeenNthCalledWith(
       2,
-      '/api/auth/nonce',
+      '/api/auth/session',
       expect.objectContaining({
-        method: 'POST',
         credentials: 'include',
-        body: JSON.stringify({
-          address: '0xabc'
+        headers: expect.objectContaining({
+          Authorization: 'Bearer privy-token'
         })
       })
     );
     expect(global.fetch).toHaveBeenNthCalledWith(
       3,
-      '/api/auth/verify',
-      expect.objectContaining({
-        method: 'POST',
-        credentials: 'include',
-        body: JSON.stringify({
-          address: '0xabc',
-          signature: '0xsigned'
-        })
-      })
-    );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      4,
-      '/api/auth/session',
-      expect.objectContaining({
-        credentials: 'include'
-      })
-    );
-    expect(global.fetch).toHaveBeenNthCalledWith(
-      5,
       '/api/pacts/9/messages',
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer privy-token'
+        }),
         body: JSON.stringify({
           body: 'See you there.'
         })
@@ -163,17 +144,6 @@ describe('shared pact chat API', () => {
           },
           401
         )
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          message: 'Sign this message to verify your wallet for StakeWithFriends chat.'
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          authenticated: true,
-          address: '0xabc'
-        })
       )
       .mockResolvedValueOnce(
         jsonResponse({
@@ -209,15 +179,79 @@ describe('shared pact chat API', () => {
       createdAt: '2026-03-28T10:20:00.000Z'
     });
 
-    expect(signWalletMessage).toHaveBeenCalledTimes(1);
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
     expect(global.fetch).toHaveBeenNthCalledWith(
-      6,
+      4,
       '/api/pacts/9/messages',
       expect.objectContaining({
         method: 'POST',
         credentials: 'include',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer privy-token'
+        }),
         body: JSON.stringify({
           body: 'Retry worked.'
+        })
+      })
+    );
+  });
+
+  it('falls back to a connected wallet signature when Privy is not available', async () => {
+    getAccessToken.mockResolvedValue('');
+    global.fetch
+      .mockResolvedValueOnce(jsonResponse({ authenticated: false }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          address: '0xabc',
+          nonce: 'nonce-1',
+          message: 'Sign in to StakeWithFriends.',
+          expiresAt: '2026-03-28T10:10:00.000Z'
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          address: '0xabc',
+          expiresAt: '2026-03-28T10:10:00.000Z',
+          sessionId: 'wallet-session'
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            message: {
+              id: 'msg-4',
+              author_address: '0xabc',
+              body: 'Wallet signed.',
+              created_at: '2026-03-28T10:25:00.000Z'
+            }
+          },
+          201
+        )
+      );
+
+    const { appendPactComment } = await import('./pactComments.js');
+    await expect(
+      appendPactComment({
+        pactId: 9,
+        address: '0xabc',
+        message: 'Wallet signed.'
+      })
+    ).resolves.toEqual({
+      id: 'msg-4',
+      authorAddress: '0xabc',
+      message: 'Wallet signed.',
+      createdAt: '2026-03-28T10:25:00.000Z'
+    });
+
+    expect(signWalletMessage).toHaveBeenCalledWith('0xabc', 'Sign in to StakeWithFriends.');
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/pacts/9/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer wallet-session'
         })
       })
     );

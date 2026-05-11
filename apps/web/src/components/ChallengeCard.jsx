@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import StatusBadge from './StatusBadge.jsx';
 import { useNow } from '../hooks/useNow.js';
 import { formatCountdown, formatDuration, formatToken, shortenAddress } from '../lib/formatters.js';
+import { buildPactPath } from '../lib/pactIds.js';
 
 export default function ChallengeCard({ challenge }) {
   const now = useNow(15_000);
@@ -17,7 +18,7 @@ export default function ChallengeCard({ challenge }) {
 
   return (
     <Link
-      to={`/pact/${challenge.id}`}
+      to={buildPactPath(challenge.id)}
       className="block rounded-[28px] border border-white/80 bg-white/85 p-5 shadow-glow transition-transform duration-200 hover:-translate-y-0.5"
     >
       <div className="flex items-start justify-between gap-3">

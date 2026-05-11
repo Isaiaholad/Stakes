@@ -54,9 +54,7 @@ export async function appendPactComment({ pactId, address, message }) {
     throw new Error('A connected wallet and comment message are required.');
   }
 
-  await ensureWalletSession(address, 'Connect your wallet before posting to pact chat.', {
-    allowUnauthenticated: true
-  });
+  await ensureWalletSession(address, 'Connect your wallet before posting to pact chat.');
   let payload;
   try {
     payload = await fetchJson(`/pacts/${pactId}/messages`, {
@@ -69,6 +67,7 @@ export async function appendPactComment({ pactId, address, message }) {
     const shouldRetrySession =
       Number(error?.status || 0) === 401 ||
       /connected wallet address is required to post in pact chat/i.test(String(error?.message || '')) ||
+      /sign in with privy before (posting to pact chat|uploading or posting a comment)/i.test(String(error?.message || '')) ||
       /sign a wallet message before posting to pact chat/i.test(String(error?.message || ''));
 
     if (!shouldRetrySession) {
@@ -76,8 +75,7 @@ export async function appendPactComment({ pactId, address, message }) {
     }
 
     await ensureWalletSession(address, 'Connect your wallet before posting to pact chat.', {
-      forceRefresh: true,
-      allowUnauthenticated: true
+      forceRefresh: true
     });
     try {
       payload = await fetchJson(`/pacts/${pactId}/messages`, {
@@ -88,7 +86,7 @@ export async function appendPactComment({ pactId, address, message }) {
       });
     } catch (retryError) {
       if (Number(retryError?.status || 0) === 401) {
-        throw new Error('Chat sign-in could not be stored. Allow cookies for this site, then try again.');
+        throw new Error('Chat sign-in could not be verified. Sign in with Privy again, then retry.');
       }
       throw retryError;
     }

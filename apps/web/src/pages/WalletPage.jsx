@@ -19,17 +19,8 @@ import {
 } from '../lib/pacts.js';
 import { useToastStore } from '../store/useToastStore.js';
 import { useWalletStore } from '../store/useWalletStore.js';
+import { buildTransactionToast } from '../lib/transactions.js';
 import { parseUnits } from 'viem';
-
-function getReceiptStatusMessage(receipt) {
-  if (!receipt) {
-    return '';
-  }
-
-  const hash = receipt.transactionHash || '';
-  const shortHash = hash ? `${hash.slice(0, 10)}...${hash.slice(-8)}` : 'Unknown hash';
-  return `Status: ${receipt.status}. Tx hash: ${shortHash}.`;
-}
 
 function parseTokenUnits(value, decimals) {
   try {
@@ -109,9 +100,11 @@ export default function WalletPage() {
       showToast({
         variant: 'success',
         title: approvalReceipt ? 'Approval and deposit confirmed' : 'Deposit confirmed',
-        message: approvalReceipt
-          ? `Vault access was approved and your deposit completed. ${getReceiptStatusMessage(depositReceipt)}`
-          : getReceiptStatusMessage(depositReceipt)
+        ...buildTransactionToast(depositReceipt, {
+          message: approvalReceipt
+            ? 'Vault access was approved and your deposit completed.'
+            : 'Your vault deposit is confirmed.'
+        })
       });
     },
     onError: async (error) => {
@@ -145,7 +138,9 @@ export default function WalletPage() {
       showToast({
         variant: 'success',
         title: 'Withdrawal confirmed',
-        message: getReceiptStatusMessage(receipt)
+        ...buildTransactionToast(receipt, {
+          message: 'Your vault withdrawal is confirmed.'
+        })
       });
     },
     onError: (error) => {
@@ -164,7 +159,9 @@ export default function WalletPage() {
       showToast({
         variant: 'success',
         title: 'Username saved',
-        message: getReceiptStatusMessage(receipt)
+        ...buildTransactionToast(receipt, {
+          message: 'Your username was saved on-chain.'
+        })
       });
     },
     onError: (error) => {
@@ -183,7 +180,9 @@ export default function WalletPage() {
       showToast({
         variant: 'success',
         title: 'Username cleared',
-        message: getReceiptStatusMessage(receipt)
+        ...buildTransactionToast(receipt, {
+          message: 'Your username was cleared on-chain.'
+        })
       });
     },
     onError: (error) => {
