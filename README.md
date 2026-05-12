@@ -1,99 +1,98 @@
 # StakeWithFriends
 
-StakeWithFriends is a mobile-first PWA for simple 1v1 USDC pacts on Arc Testnet. Users fund a vault, create or join a pact, declare a result, and resolve payouts on-chain.
+StakeWithFriends is a mobile-first PWA for funded 1v1 USDC pacts on Arc Testnet. Users sign in, fund a vault, create or join a pact, upload result evidence, chat with the other participant, and resolve payouts on-chain.
 
-Use Node.js 20 or 22 LTS for local development and CI.
+Use Node.js `>=22 <24`. The API also needs Python 3 with the OCR dependencies in [apps/api/requirements.txt](apps/api/requirements.txt) when eFootball result detection is enabled.
 
 ## Stack
 
-- React + Vite + Tailwind
-- Wallet-native auth with injected wallets
+- React, Vite, Tailwind, and PWA caching
+- Privy login plus wallet-extension and WalletConnect/Reown wallet support
 - `viem` for Arc Testnet reads and writes
+- Node API service for indexed reads, pact chat, uploads, OCR, and keeper jobs
+- Supabase Postgres for app data and indexed read models
+- Supabase Storage S3-compatible uploads for evidence files
+- `efootball-ocr` with optional Ollama or OpenAI vision fallback
 - Hardhat contract workspace
-- On-chain username registry for `@username` invites
-- Catbox uploads for dispute-proof links
 
 ## Project Layout
 
 ```text
 stakewithfriends
 ├── apps
+│   ├── api
+│   │   ├── src
+│   │   ├── test
+│   │   ├── requirements.txt
+│   │   └── .env.example
 │   └── web
 │       ├── public
 │       ├── src
 │       └── .env.example
 ├── contracts
 │   ├── contracts
-│   │   ├── MockStablecoin.sol
-│   │   ├── UsernameRegistry.sol
-│   │   └── pacts
 │   ├── scripts
 │   ├── test
 │   ├── hardhat.config.js
 │   └── .env.example
+├── vercel.json
 ├── package.json
 └── package-lock.json
 ```
 
-`MockStablecoin.sol` is kept only for local contract tests. The deployment flow uses the Arc Testnet USDC ERC-20 interface address.
+`MockStablecoin.sol` is kept for local contract tests. Testnet deployments should use the Arc Testnet USDC ERC-20 interface address.
 
 ## Quick Start
 
-1. Install dependencies.
+1. Install JavaScript dependencies.
 
 ```bash
 npm install
 ```
 
-2. Copy the env files.
+2. Install Python OCR dependencies.
+
+```bash
+python3 -m venv apps/api/.venv
+apps/api/.venv/bin/python -m pip install -r apps/api/requirements.txt
+```
+
+3. Copy env files.
 
 ```bash
 cp apps/web/.env.example apps/web/.env
-cp contracts/.env.example contracts/.env
 cp apps/api/.env.example apps/api/.env
+cp contracts/.env.example contracts/.env
 ```
 
-3. Add your Arc Testnet values and deployed addresses.
+4. Fill in Arc contract addresses, Supabase, Privy, and storage settings.
 
-4. Run the app.
-
-```bash
-npm run dev:web
-```
-
-5. Run the local API if you want indexed reads, pact chat, and timed autonomous settlement.
+5. Run the API and web app in two terminals.
 
 ```bash
 npm run dev:api
+npm run dev:web
 ```
 
-## Contract Commands
+The web app runs on `http://127.0.0.1:5173` by default. The API runs on `http://127.0.0.1:8787`.
 
-Compile:
+## Common Commands
 
 ```bash
+npm run dev:web
+npm run dev:api
+npm run api:indexer
+npm run api:indexer:once
+npm run build:web
+npm run test:web
+npm run test:api
 npm run contracts:compile
-```
-
-Test:
-
-```bash
 npm run contracts:test
-```
-
-Deploy the core contracts with an existing USDC address:
-
-```bash
 npm run contracts:deploy
-```
-
-Deploy the username registry:
-
-```bash
 npm run contracts:deploy:username-registry
 ```
 
-## Required Environment Variables
+## Environment
 
 ### `apps/web/.env`
 
@@ -107,18 +106,63 @@ VITE_PACT_MANAGER_ADDRESS=0xYourPactManagerAddress
 VITE_SUBMISSION_MANAGER_ADDRESS=0xYourSubmissionManagerAddress
 VITE_PACT_RESOLUTION_MANAGER_ADDRESS=0xYourPactResolutionManagerAddress
 VITE_USERNAME_REGISTRY_ADDRESS=0xYourUsernameRegistryAddress
-ARC_RPC_UPSTREAM_URL=https://rpc.testnet.arc.network
+VITE_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+VITE_PRIVY_APP_ID=your_privy_app_id
+ARC_RPC_UPSTREAM_URL=https://rpc.quicknode.testnet.arc.network
+VITE_API_UPSTREAM_URL=http://127.0.0.1:8787
 CATBOX_UPLOAD_UPSTREAM_URL=https://catbox.moe
 ```
+
+`VITE_RPC_URL=/rpc/arc` keeps browser chain reads same-origin. `VITE_API_UPSTREAM_URL` is only used by the local Vite proxy.
 
 ### `apps/api/.env`
 
 ```env
 API_HOST=127.0.0.1
 API_PORT=8787
-ARC_RPC_URL=https://rpc.testnet.arc.network
+ALLOWED_ORIGIN=*
+DATABASE_URL=postgresql://postgres.your-project-ref:your-password@aws-0-region.pooler.supabase.com:6543/postgres
+ARC_RPC_URL=https://rpc.quicknode.testnet.arc.network
 CHAIN_ID=5042002
 EMBED_INDEXER=true
+CORE_SYNC_MODE=state-snapshot
+USERNAME_SYNC_MODE=state-snapshot
+PACT_INDEX_START_BLOCK=0
+USERNAME_INDEX_START_BLOCK=0
+SYNC_BATCH_SIZE=100
+SYNC_MAX_BATCHES_PER_RUN=25
+SYNC_POLL_INTERVAL_MS=15000
+HEALTH_SYNC_LAG_BLOCKS=5000
+AUTONOMOUS_KEEPER_ENABLED=false
+AUTONOMOUS_KEEPER_PRIVATE_KEY=
+AUTONOMOUS_KEEPER_POLL_INTERVAL_MS=15000
+AUTONOMOUS_KEEPER_BATCH_SIZE=25
+SESSION_TTL_HOURS=168
+NONCE_TTL_MINUTES=10
+SESSION_COOKIE_SECURE=false
+MAX_JSON_BODY_BYTES=8388608
+MAX_EVIDENCE_IMAGE_BYTES=1048576
+MAX_EVIDENCE_VIDEO_BYTES=10485760
+STORAGE_MODE=supabase-s3
+STORAGE_S3_ENDPOINT=https://your-project-ref.supabase.co/storage/v1/s3
+STORAGE_BUCKET=evidence
+STORAGE_REGION=eu-west-1
+STORAGE_ACCESS_KEY_ID=
+STORAGE_SECRET_ACCESS_KEY=
+STORAGE_PUBLIC_BASE_URL=https://your-project-ref.supabase.co/storage/v1/object/public
+STORAGE_AUTO_CREATE_BUCKET=true
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=
+FFMPEG_PATH=ffmpeg
+AI_ANALYSIS_PROVIDER=ollama
+EFOOTBALL_OCR_CONFIDENCE_THRESHOLD=0.6
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_VISION_MODEL=llava
+OPENAI_API_KEY=
+OPENAI_VISION_MODEL=gpt-4.1-mini
+PRIVY_APP_ID=your_privy_app_id
+PRIVY_APP_SECRET=
+STATE_RECONCILE_CONCURRENCY=4
 STABLECOIN_ADDRESS=0x3600000000000000000000000000000000000000
 PROTOCOL_CONTROL_ADDRESS=0xYourProtocolControlAddress
 PACT_VAULT_ADDRESS=0xYourPactVaultAddress
@@ -126,20 +170,9 @@ PACT_MANAGER_ADDRESS=0xYourPactManagerAddress
 SUBMISSION_MANAGER_ADDRESS=0xYourSubmissionManagerAddress
 PACT_RESOLUTION_MANAGER_ADDRESS=0xYourPactResolutionManagerAddress
 USERNAME_REGISTRY_ADDRESS=0xYourUsernameRegistryAddress
-MAX_JSON_BODY_BYTES=8388608
-STORAGE_MODE=catbox-public
-CATBOX_PUBLIC_BASE_URL=https://files.catbox.moe
-AI_ANALYSIS_PROVIDER=ollama
-EFOOTBALL_OCR_CONFIDENCE_THRESHOLD=0.6
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_VISION_MODEL=llava
-OPENAI_API_KEY=
-OPENAI_VISION_MODEL=gpt-4.1-mini
-AUTONOMOUS_KEEPER_ENABLED=false
-AUTONOMOUS_KEEPER_PRIVATE_KEY=
-AUTONOMOUS_KEEPER_POLL_INTERVAL_MS=15000
-AUTONOMOUS_KEEPER_BATCH_SIZE=25
 ```
+
+The API requires `DATABASE_URL`; local SQLite is no longer used. Keep Supabase service role keys, storage secrets, Privy secrets, and keeper private keys in local env files or deployment secret stores only.
 
 ### `contracts/.env`
 
@@ -147,33 +180,36 @@ AUTONOMOUS_KEEPER_BATCH_SIZE=25
 ARC_TESTNET_RPC_URL=https://rpc.testnet.arc.network
 PACT_ADMIN_ADDRESS=0xYourAdminWallet
 PACT_STABLECOIN_ADDRESS=0x3600000000000000000000000000000000000000
+PACT_MIN_STAKE_UNITS=1000000
+PACT_FEE_RECIPIENT=0xYourFeeRecipient
+PACT_FEE_BPS=0
 ```
 
-Supply `PRIVATE_KEY` only at runtime from your terminal or CI secret store, not from a repo-local env file.
-
-`AUTONOMOUS_KEEPER_PRIVATE_KEY` is only needed for the local API when you want unattended timed settlement. Keep it out of repo-local defaults and inject it at runtime or from your deployment secret store.
-
-## Deployment Notes
-
-- Deploy contracts to Arc Testnet first.
-- Use the Arc Testnet USDC ERC-20 interface address in `PACT_STABLECOIN_ADDRESS`.
-- Copy the deployed Arc contract addresses into `apps/web/.env` and `apps/web/.env.production`.
-- Copy the same Arc contract addresses into `apps/api/.env` if you want indexed reads, chat, and autonomous settlement.
-- Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads stay same-origin.
-- `apps/web/vercel.json` already rewrites `/rpc/arc`, `/upload/catbox`, and `/api`.
-- On Vercel, set `API_UPSTREAM_URL` to the full API host (no path), so `/api/*` is proxied to your backend.
-- On Vercel, set the project root to `apps/web`, build with `npm run build`, and publish `dist`.
-- The web app does not need a private key on Vercel.
-- Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied at runtime.
-- eFootball winner detection runs `efootball-ocr` first, then falls back to Ollama vision when OCR is uncertain. Install Python deps with `python3 -m pip install -r apps/api/requirements.txt`; set `OPENAI_API_KEY` only if you choose `AI_ANALYSIS_PROVIDER=openai` or `auto`.
-- For contract deployment, pass the deployer key only at runtime, for example:
+Pass deployer keys only at runtime:
 
 ```bash
 PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy
 PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 ```
 
-- Do not put a deployer private key in Vercel for this frontend-only app.
+## Deployment Notes
+
+- Deploy the API separately from the static web app, for example on Render or another Node host.
+- The API host must have `DATABASE_URL`, Arc RPC, contract addresses, Privy server credentials, Supabase Storage credentials, and Python OCR dependencies available.
+- On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
+- Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://` and without `/api`. Example: `stakewithfriends-api.onrender.com`.
+- Keep frontend private keys out of Vercel. The web app only needs public Vite env values.
+- Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads use the same-domain Arc rewrite.
+- Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied from secrets.
+- If OCR confidence is low, eFootball analysis can fall back to Ollama or OpenAI depending on `AI_ANALYSIS_PROVIDER`.
+
+## Evidence And Chat
+
+- Pact chat is persisted through the API and Supabase Postgres.
+- Posting chat uses the signed-in Privy identity when available and can fall back to a one-time wallet signature.
+- Evidence uploads go through the API, are validated, compressed with FFmpeg, and stored through Supabase Storage.
+- eFootball pacts require a final-result screenshot before result submission. The API reads common eFootball result layouts and maps the detected winner to the pact participants.
+- Legacy Catbox links may still appear in indexed evidence history, but new managed uploads should use Supabase Storage.
 
 ## Pact Lifecycle
 
@@ -185,20 +221,33 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
    When the event duration ends, the declaration window opens.
 4. `Auto split`
    If neither side declares before the declaration window closes, the keeper settles the pact to a split.
-5. `Auto win for lone declaration`
-   If only one side declares, the other side has the declaration grace period to dispute. If they stay silent, the keeper settles to the declaring winner.
-6. `Auto settle for matched declarations`
-   If both sides declare the same winner, the second declaration transaction resolves the pact immediately.
-7. `Dispute`
-   If both sides declare different winners, the second declaration transaction opens dispute immediately. The silent side can also open dispute during the lone-declaration review period.
-8. `Withdraw`
+5. `Lone declaration review`
+   If only one side declares, the other side has the review period to agree, dispute, or submit their own result.
+6. `Auto win for lone declaration`
+   If the review period ends silently, either participant or the keeper can settle to the declaring winner.
+7. `Matched declarations`
+   If both sides declare the same winner, the pact can settle immediately.
+8. `Dispute`
+   Conflicting declarations or challenged lone results move to arbiter review.
+9. `Withdraw`
    Resolved funds remain in vault balances until withdrawn.
 
 ## Core Contracts
 
 - `ProtocolControl`: admin roles and pause control
-- `PactVault`: deposits, reserved stake, payouts, and splits
-- `PactManager`: create, join, cancel, and pact state
+- `PactVault`: deposits, reserved stake, payouts, fee snapshots, and splits
+- `PactManager`: create, join, cancel, minimum stake, and pact state
 - `SubmissionManager`: winner declarations
-- `PactResolutionManager`: settlement and disputes
+- `PactResolutionManager`: settlement, disputes, review periods, and arbiter resolution
 - `UsernameRegistry`: wallet-to-username lookup
+
+## Validation
+
+Run the relevant checks before deployment:
+
+```bash
+npm run build:web
+npm run test:web
+npm run test:api
+npm run contracts:test
+```
