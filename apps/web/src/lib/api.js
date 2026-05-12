@@ -39,11 +39,18 @@ export async function fetchJson(pathname, options = {}) {
 
   const contentType = response.headers.get('content-type') || '';
   const payload = contentType.includes('application/json') ? await response.json() : null;
+  const textPayload = payload ? '' : await response.text().catch(() => '');
 
   if (!response.ok) {
     let errorMessage = `Request failed with status ${response.status}.`;
     if (payload?.error) {
       errorMessage = typeof payload.error === 'string' ? payload.error : (payload.error.message || JSON.stringify(payload.error));
+    } else if (/DNS_HOSTNAME_NOT_FOUND/i.test(textPayload)) {
+      errorMessage = 'The API backend is not reachable from Vercel. Check API_UPSTREAM_URL in Vercel and redeploy.';
+    } else if (/An error occurred with this application/i.test(textPayload)) {
+      errorMessage = 'The API proxy returned a Vercel application error. Check the backend URL and API deployment logs.';
+    } else if (textPayload.trim()) {
+      errorMessage = textPayload.trim();
     }
     const error = new Error(errorMessage);
     error.status = response.status;

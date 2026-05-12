@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/rpc/arc",
-      "destination": "https://rpc.testnet.arc.network"
+      "destination": "https://rpc.quicknode.testnet.arc.network"
     },
     {
       "source": "/upload/catbox",

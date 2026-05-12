@@ -3,7 +3,7 @@
   "buildCommand": "npm run build:web",
   "outputDirectory": "apps/web/dist",
   "rewrites": [
-    { "source": "/rpc/arc", "destination": "https://rpc.testnet.arc.network" },
+    { "source": "/rpc/arc", "destination": "https://rpc.quicknode.testnet.arc.network" },
     { "source": "/upload/catbox", "destination": "https://catbox.moe/user/api.php" },
     { "source": "/api/:path*", "destination": "https://$API_UPSTREAM_URL/:path*" },
     { "source": "/create", "destination": "/index.html" },

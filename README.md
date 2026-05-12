@@ -110,10 +110,11 @@ VITE_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
 VITE_PRIVY_APP_ID=your_privy_app_id
 ARC_RPC_UPSTREAM_URL=https://rpc.quicknode.testnet.arc.network
 VITE_API_UPSTREAM_URL=http://127.0.0.1:8787
+VITE_API_BASE_URL=
 CATBOX_UPLOAD_UPSTREAM_URL=https://catbox.moe
 ```
 
-`VITE_RPC_URL=/rpc/arc` keeps browser chain reads same-origin. `VITE_API_UPSTREAM_URL` is only used by the local Vite proxy.
+`VITE_RPC_URL=/rpc/arc` keeps browser chain reads same-origin. `VITE_API_UPSTREAM_URL` is only used by the local Vite proxy. Leave `VITE_API_BASE_URL` empty when using the same-origin `/api` Vercel rewrite; set it to a full API URL only if you intentionally want the browser to call the API host directly.
 
 ### `apps/api/.env`
 
@@ -198,6 +199,7 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 - The API host must have `DATABASE_URL`, Arc RPC, contract addresses, Privy server credentials, Supabase Storage credentials, and Python OCR dependencies available.
 - On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
 - Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://` and without `/api`. Example: `stakewithfriends-api.onrender.com`.
+- If Vercel returns `DNS_HOSTNAME_NOT_FOUND` for `/api/*`, `API_UPSTREAM_URL` is missing or malformed. Remove `https://` from the value, save it for Production, Preview, and Development as needed, then redeploy.
 - Keep frontend private keys out of Vercel. The web app only needs public Vite env values.
 - Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads use the same-domain Arc rewrite.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied from secrets.
