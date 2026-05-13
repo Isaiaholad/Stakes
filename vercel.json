@@ -5,7 +5,7 @@
   "rewrites": [
     { "source": "/rpc/arc", "destination": "https://rpc.quicknode.testnet.arc.network" },
     { "source": "/upload/catbox", "destination": "https://catbox.moe/user/api.php" },
-    { "source": "/api/:path*", "destination": "$API_UPSTREAM_URL/:path*" },
+    { "source": "/api/:path*", "destination": "https://$API_UPSTREAM_URL/:path*" },
     { "source": "/create", "destination": "/index.html" },
     { "source": "/explore", "destination": "/index.html" },
     { "source": "/vault", "destination": "/index.html" },
