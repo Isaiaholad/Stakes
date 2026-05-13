@@ -166,7 +166,7 @@ export const apiConfig = {
   supabaseUrl: getEnv('SUPABASE_URL', ''),
   supabaseServiceRoleKey: getEnv('SUPABASE_SERVICE_ROLE_KEY', ''),
   ffmpegPath: getEnv('FFMPEG_PATH', 'ffmpeg'),
-  aiAnalysisProvider: getEnv('AI_ANALYSIS_PROVIDER', 'ollama'),
+  aiAnalysisProvider: getEnv('AI_ANALYSIS_PROVIDER', 'ocr-only'),
   efootballOcrConfidenceThreshold: Number(getEnv('EFOOTBALL_OCR_CONFIDENCE_THRESHOLD', '0.6')),
   ollamaBaseUrl: getEnv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
   ollamaVisionModel: getEnv('OLLAMA_VISION_MODEL', 'llava'),

@@ -2,6 +2,24 @@ import { useState } from 'react';
 import { Flag, Gavel, Wallet } from 'lucide-react';
 import { formatParticipantLabel, getDeclarationButtonShell } from './pactDetailUtils.js';
 
+const chessColors = ['White', 'Black'];
+
+function getCreatorChessColor(pact) {
+  const match = String(pact?.description || '').match(/creator(?:'s)?\s+chess\s+color\s*:\s*(white|black)/i);
+  return match?.[1] ? match[1].slice(0, 1).toUpperCase() + match[1].slice(1).toLowerCase() : '';
+}
+
+function getOppositeChessColor(color) {
+  const normalized = String(color || '').toLowerCase();
+  if (normalized === 'white') {
+    return 'Black';
+  }
+  if (normalized === 'black') {
+    return 'White';
+  }
+  return '';
+}
+
 export default function PactActionsCard({
   pact,
   address,
@@ -35,6 +53,7 @@ export default function PactActionsCard({
   efootballEvidenceReady
 }) {
   const [joinUsernameDraft, setJoinUsernameDraft] = useState('');
+  const [joinChessColorDraft, setJoinChessColorDraft] = useState('');
 
   if (!address) {
     return null;
@@ -48,6 +67,10 @@ export default function PactActionsCard({
       !pact.counterpartyDeclaration.submitted &&
       pact.creatorDeclaration.submitted);
   const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
+  const isChess = String(pact.eventType || '').toLowerCase() === 'chess';
+  const creatorChessColor = getCreatorChessColor(pact);
+  const suggestedChessColor = getOppositeChessColor(creatorChessColor);
+  const joinChessColor = joinChessColorDraft || suggestedChessColor;
   const uploadedScreenshots = evidenceUploads?.filter((item) => item.status === 'uploaded').length || 0;
   const aiDetectionFailed = Boolean(analyzeEfootballResultMutation.isError);
   const canUseManualScreenshotFallback = Boolean(isEfootball && efootballEvidenceReady && aiDetectionFailed);
@@ -105,6 +128,39 @@ export default function PactActionsCard({
                 >
                   <Wallet className="h-5 w-5" />
                   {joinMutation.isPending ? 'Joining pact...' : 'Join and save username'}
+                </button>
+              </div>
+            ) : isChess ? (
+              <div className="rounded-[24px] border border-amber-200 bg-white p-4">
+                <p className="font-display text-xl text-ink">Choose your chess color</p>
+                <p className="mt-1 text-sm text-slate/70">
+                  {creatorChessColor
+                    ? `The creator selected ${creatorChessColor}. Confirm the color you will play before joining.`
+                    : 'Confirm the color you will play before joining this chess pact.'}
+                </p>
+                <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  Your color
+                </label>
+                <select
+                  value={joinChessColor}
+                  onChange={(event) => setJoinChessColorDraft(event.target.value)}
+                  className="mt-2 w-full rounded-[22px] border border-amber-200 bg-amber-50/60 px-4 py-4 text-base font-semibold text-ink outline-none transition focus:border-amber-500 focus:bg-white"
+                >
+                  <option value="">Choose color</option>
+                  {chessColors.map((color) => (
+                    <option key={color} value={color}>
+                      {color}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => joinMutation.mutate(joinChessColor)}
+                  disabled={joinMutation.isPending || Boolean(joinBalanceError) || !joinChessColor}
+                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-ink px-5 py-4 text-base font-semibold text-sand disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <Wallet className="h-5 w-5" />
+                  {joinMutation.isPending ? 'Joining pact...' : 'Join and save color'}
                 </button>
               </div>
             ) : (

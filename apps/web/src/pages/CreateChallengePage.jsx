@@ -20,7 +20,10 @@ import {
 import { useWalletStore } from '../store/useWalletStore.js';
 import { useToastStore } from '../store/useToastStore.js';
 
-const presets = ['eFootball'];
+const efootballPactTypeValue = 'eFootball';
+const chessPactTypeValue = 'Chess';
+const presets = [efootballPactTypeValue, chessPactTypeValue];
+const chessColors = ['White', 'Black'];
 const customPactTypeValue = '__custom__';
 const minimumEventDurationMinutes = 5;
 const defaultDeclarationWindowMinutes = 20;
@@ -58,6 +61,14 @@ function hasValidTokenPrecision(value, decimals) {
   }
 }
 
+function isEfootballPactType(value) {
+  return String(value || '').toLowerCase() === efootballPactTypeValue.toLowerCase();
+}
+
+function isChessPactType(value) {
+  return String(value || '').toLowerCase() === chessPactTypeValue.toLowerCase();
+}
+
 export default function CreateChallengePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -74,7 +85,8 @@ export default function CreateChallengePage() {
     openToPublic: false,
     eventDurationMinutes: String(minimumEventDurationMinutes),
     declarationWindowMinutes: String(defaultDeclarationWindowMinutes),
-    inGameUsername: ''
+    inGameUsername: '',
+    chessColor: chessColors[0]
   });
 
   const vaultQuery = useQuery({
@@ -92,11 +104,14 @@ export default function CreateChallengePage() {
   const resolvedTitle = form.pactType === customPactTypeValue ? form.customTitle.trim() : form.pactType;
   const composedDescription = useMemo(() => {
     let desc = String(form.description || '').trim();
-    if (form.pactType === 'eFootball' && form.inGameUsername.trim()) {
+    if (isEfootballPactType(form.pactType) && form.inGameUsername.trim()) {
       desc = desc ? `${desc}\n\nCreator's in-game username: ${form.inGameUsername.trim()}` : `Creator's in-game username: ${form.inGameUsername.trim()}`;
     }
+    if (isChessPactType(form.pactType) && form.chessColor) {
+      desc = desc ? `${desc}\n\nCreator's chess color: ${form.chessColor}` : `Creator's chess color: ${form.chessColor}`;
+    }
     return desc;
-  }, [form.description, form.pactType, form.inGameUsername]);
+  }, [form.chessColor, form.description, form.pactType, form.inGameUsername]);
   const eventDurationSeconds = useMemo(() => Math.floor(requestedEventDurationMinutes * 60), [requestedEventDurationMinutes]);
   const declarationWindowSeconds = useMemo(
     () => Math.floor(requestedDeclarationWindowMinutes * 60),
@@ -124,8 +139,10 @@ export default function CreateChallengePage() {
     validationError = 'Enter a stake amount greater than zero.';
   } else if (!resolvedTitle) {
     validationError = 'Enter a custom pact type.';
-  } else if (form.pactType === 'eFootball' && !form.inGameUsername.trim()) {
+  } else if (isEfootballPactType(form.pactType) && !form.inGameUsername.trim()) {
     validationError = 'Please enter your in-game username for eFootball.';
+  } else if (isChessPactType(form.pactType) && !chessColors.includes(form.chessColor)) {
+    validationError = 'Choose whether you will play White or Black.';
   } else if (!form.openToPublic && !counterpartyValue) {
     validationError = 'Add the counterparty username or switch to an open pact.';
   } else if (!form.openToPublic && !usernameRegistryConfigured) {
@@ -276,7 +293,7 @@ export default function CreateChallengePage() {
           />
         </label>
 
-        {form.pactType === 'eFootball' ? (
+        {isEfootballPactType(form.pactType) ? (
           <label className="block">
             <FieldLabel tip="Your exact in-game username is required to verify the match winner automatically using OCR.">
               In-game username
@@ -287,6 +304,28 @@ export default function CreateChallengePage() {
               placeholder="Enter your exact eFootball username"
               className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none placeholder:text-slate/40"
             />
+          </label>
+        ) : null}
+
+        {isChessPactType(form.pactType) ? (
+          <label className="block">
+            <FieldLabel tip="Choose your chess color for this pact. The joining player will confirm the opposite color before joining.">
+              Your chess color
+            </FieldLabel>
+            <select
+              value={form.chessColor}
+              onChange={(event) => setForm((current) => ({ ...current, chessColor: event.target.value }))}
+              className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none"
+            >
+              {chessColors.map((color) => (
+                <option key={color} value={color}>
+                  {color}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-slate/60">
+              Chess pacts use player color instead of an in-game username.
+            </p>
           </label>
         ) : null}
 

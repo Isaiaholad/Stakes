@@ -1,8 +1,8 @@
 # StakeWithFriends
 
-StakeWithFriends is a mobile-first PWA for funded 1v1 USDC pacts on Arc Testnet. Users sign in, fund a vault, create or join a pact, upload result evidence, chat with the other participant, and resolve payouts on-chain.
+StakeWithFriends is a mobile-first PWA for funded 1v1 USDC pacts on Arc Testnet. Users sign in, fund a vault, create or join eFootball, Chess, or custom pacts, upload result evidence, chat with the other participant, and resolve payouts on-chain.
 
-Use Node.js `>=22 <24`. The API also needs Python 3 with the OCR dependencies in [apps/api/requirements.txt](apps/api/requirements.txt) when eFootball result detection is enabled.
+Use Node.js `>=22 <24`. The API also needs Python 3, [apps/api/requirements.txt](apps/api/requirements.txt), and the native `tesseract-ocr` binary when eFootball result detection is enabled.
 
 ## Stack
 
@@ -12,7 +12,7 @@ Use Node.js `>=22 <24`. The API also needs Python 3 with the OCR dependencies in
 - Node API service for indexed reads, pact chat, uploads, OCR, and keeper jobs
 - Supabase Postgres for app data and indexed read models
 - Supabase Storage S3-compatible uploads for evidence files
-- `efootball-ocr` with optional Ollama or OpenAI vision fallback
+- `efootball-ocr` with Tesseract OCR and optional Ollama or OpenAI vision fallback
 - Hardhat contract workspace
 
 ## Project Layout
@@ -23,6 +23,7 @@ stakewithfriends
 │   ├── api
 │   │   ├── src
 │   │   ├── test
+│   │   ├── Dockerfile
 │   │   ├── requirements.txt
 │   │   └── .env.example
 │   └── web
@@ -50,12 +51,14 @@ stakewithfriends
 npm install
 ```
 
-2. Install Python OCR dependencies.
+2. Install OCR dependencies.
 
 ```bash
 python3 -m venv apps/api/.venv
 apps/api/.venv/bin/python -m pip install -r apps/api/requirements.txt
 ```
+
+Install `tesseract-ocr` on the API host as well. On macOS that is usually `brew install tesseract`; on Linux hosts use the host package manager or the API Dockerfile.
 
 3. Copy env files.
 
@@ -155,7 +158,7 @@ STORAGE_AUTO_CREATE_BUCKET=true
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=
 FFMPEG_PATH=ffmpeg
-AI_ANALYSIS_PROVIDER=ollama
+AI_ANALYSIS_PROVIDER=ocr-only
 EFOOTBALL_OCR_CONFIDENCE_THRESHOLD=0.6
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_VISION_MODEL=llava
@@ -198,8 +201,9 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 ## Deployment Notes
 
 - Deploy the API separately from the static web app, for example on Render or another Node host.
-- On Render, use `Root Directory: apps/api`, `Build Command: npm install && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`, and `Start Command: npm start`.
-- The API host must have `DATABASE_URL`, Arc RPC, contract addresses, Privy server credentials, Supabase Storage credentials, and Python OCR dependencies available.
+- On Render, prefer Docker for the API: set `Root Directory: apps/api`, use the Docker runtime, and point Render at [apps/api/Dockerfile](apps/api/Dockerfile). The Dockerfile installs Node, Python, FFmpeg, and `tesseract-ocr`.
+- If you use a native Render Node service instead, the API can start, but eFootball OCR will fail unless you provide a working Tesseract binary yourself. Render native services do not include `tesseract-ocr` by default.
+- The API host must have `DATABASE_URL`, Arc RPC, contract addresses, Privy server credentials, Supabase Storage credentials, FFmpeg, Tesseract OCR, and Python OCR dependencies available.
 - On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
 - Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://`, without `/api`, and without a trailing slash. Example: `stakewithfriends-api.onrender.com`.
 - If Vercel returns `DNS_HOSTNAME_NOT_FOUND` or `NOT_FOUND` for `/api/*`, `API_UPSTREAM_URL` is missing or malformed. Save the hostname-only Render value for Production, Preview, and Development as needed, then redeploy.
@@ -207,7 +211,7 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 - Keep frontend private keys out of Vercel. The web app only needs public Vite env values.
 - Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads use the same-domain Arc rewrite.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied from secrets.
-- If OCR confidence is low, eFootball analysis can fall back to Ollama or OpenAI depending on `AI_ANALYSIS_PROVIDER`.
+- By default `AI_ANALYSIS_PROVIDER=ocr-only`; set it to `ollama`, `openai`, or `auto` only when that fallback is actually deployed and reachable from the API host.
 
 ## Evidence And Chat
 
@@ -215,6 +219,7 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 - Posting chat uses the signed-in Privy identity when available and can fall back to a one-time wallet signature.
 - Evidence uploads go through the API, are validated, compressed with FFmpeg, and stored through Supabase Storage.
 - eFootball pacts require a final-result screenshot before result submission. The API reads common eFootball result layouts and maps the detected winner to the pact participants.
+- Chess pacts capture player color instead of an in-game username and use the normal declaration flow.
 - Legacy Catbox links may still appear in indexed evidence history, but new managed uploads should use Supabase Storage.
 
 ## Pact Lifecycle

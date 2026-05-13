@@ -219,7 +219,7 @@ export function usePactDetailPage(id, address) {
       : '';
 
   const joinMutation = useMutation({
-    mutationFn: async (username) => {
+    mutationFn: async (joinMetadata) => {
       if (!address) {
         throw new Error('Connect your wallet to join this pact.');
       }
@@ -234,15 +234,19 @@ export function usePactDetailPage(id, address) {
 
       const res = await joinPact(address, pactId);
 
-      if (username && typeof username === 'string' && username.trim()) {
+      if (joinMetadata && typeof joinMetadata === 'string' && joinMetadata.trim()) {
         try {
+          const eventType = String(pactQuery.data?.eventType || '').toLowerCase();
+          const metadataLabel = eventType === 'chess'
+            ? "Counterparty's chess color"
+            : "Counterparty's in-game username";
           await appendPactComment({
             pactId,
             address,
-            message: `Counterparty's in-game username: ${username.trim()}`
+            message: `${metadataLabel}: ${joinMetadata.trim()}`
           });
         } catch(e) {
-          console.error('Failed to post username comment', e);
+          console.error('Failed to post pact join metadata comment', e);
         }
       }
 

@@ -46,14 +46,16 @@ describe('indexed pact API reads', () => {
 
   it('reads dashboard, open feed, pact detail, and admin queue from the indexed API', async () => {
     global.fetch
-      .mockResolvedValueOnce(jsonResponse({ pacts: [{ id: 7, stage: 'Completed' }] }))
+      .mockResolvedValueOnce(jsonResponse({ pacts: [{ id: 7, stage: 'Completed', participantRole: 'creator' }] }))
       .mockResolvedValueOnce(jsonResponse({ pacts: [{ id: 8, stage: 'Open For Join' }] }))
       .mockResolvedValueOnce(jsonResponse({ pact: { id: 7, stage: 'Completed' } }))
       .mockResolvedValueOnce(jsonResponse({ protocol: { isAdmin: true }, pacts: [{ id: 5 }] }));
 
     const { readAdminQueue, readAllPacts, readOpenPacts, readPactById } = await loadPactsModule();
 
-    await expect(readAllPacts('0xabc', { limit: 12 })).resolves.toEqual([{ id: 7, stage: 'Completed' }]);
+    await expect(readAllPacts('0xabc', { limit: 12 })).resolves.toEqual([
+      { id: 7, stage: 'Completed', participantRole: 'creator' }
+    ]);
     await expect(readOpenPacts('0xabc', { limit: 18 })).resolves.toEqual([{ id: 8, stage: 'Open For Join' }]);
     await expect(readPactById(7, '0xabc')).resolves.toEqual({ id: 7, stage: 'Completed' });
     await expect(readAdminQueue('0xabc', { limit: 50 })).resolves.toEqual({

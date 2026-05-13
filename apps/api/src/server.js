@@ -551,6 +551,35 @@ function normalizeAnalysisResult(rawResult, { pact, creatorUsername, counterpart
   };
 }
 
+function summarizeEfootballOcrAttempt(attempts) {
+  const ocrAttempt = attempts.find((attempt) => attempt.source === 'efootball-ocr');
+  if (!ocrAttempt) {
+    return 'OCR could not confidently detect a winner.';
+  }
+
+  if (ocrAttempt.error) {
+    return `OCR runtime failed: ${ocrAttempt.error}`;
+  }
+
+  const details = [];
+  if (ocrAttempt.winnerUsername) {
+    details.push(`OCR read winner "${ocrAttempt.winnerUsername}"`);
+  }
+  if (ocrAttempt.scoreLine) {
+    details.push(`score ${ocrAttempt.scoreLine}`);
+  }
+  if (ocrAttempt.winnerSide === 'unknown') {
+    details.push('but could not match that name to either saved pact username');
+  }
+  if (Number(ocrAttempt.confidence || 0) < apiConfig.efootballOcrConfidenceThreshold) {
+    details.push(`confidence ${Math.round(Number(ocrAttempt.confidence || 0) * 100)}% was below the required ${Math.round(apiConfig.efootballOcrConfidenceThreshold * 100)}%`);
+  }
+
+  return details.length
+    ? `${details.join(', ')}.`
+    : 'OCR could not confidently detect a winner.';
+}
+
 function extractEfootballAliasesFromText(text) {
   const aliases = {};
   const patterns = [
@@ -673,6 +702,8 @@ async function analyzeEfootballScreenshot({ pact, evidenceRecord, creatorUsernam
       winnerAddress: ocrResult.winnerAddress,
       confidence: ocrResult.confidence,
       winnerUsername: ocrResult.winnerUsername || ocrResult.winner || '',
+      leftName: ocrResult.home_username || '',
+      rightName: ocrResult.away_username || '',
       scoreLine: ocrResult.score_line || ocrResult.scoreLine || ''
     });
     if (ocrResult.winnerAddress !== zeroAddress && ocrResult.confidence >= apiConfig.efootballOcrConfidenceThreshold) {
@@ -717,17 +748,19 @@ async function analyzeEfootballScreenshot({ pact, evidenceRecord, creatorUsernam
           counterpartyUsername,
           attempts
         });
-        throw new Error(`OCR could not detect a winner and Ollama fallback failed. ${error?.message || ''}`.trim());
+        throw new Error(
+          `${summarizeEfootballOcrAttempt(attempts)} Ollama fallback is unavailable: ${error?.message || 'fetch failed'}.`
+        );
       }
     }
   }
 
   if (apiConfig.aiAnalysisProvider !== 'openai' && apiConfig.aiAnalysisProvider !== 'auto') {
-    throw new Error('OCR could not confidently detect a winner and no AI fallback is configured.');
+    throw new Error(`${summarizeEfootballOcrAttempt(attempts)} No AI fallback is configured.`);
   }
 
   if (!apiConfig.openaiApiKey) {
-    throw new Error('AI evidence analysis is not configured. Set OPENAI_API_KEY on the API service.');
+    throw new Error(`${summarizeEfootballOcrAttempt(attempts)} OpenAI fallback is not configured on the API service.`);
   }
 
   const imageDataUrl = await loadEvidenceImageAsDataUrl(evidenceRecord);
@@ -900,6 +933,52 @@ function formatSyncStatusRow(row, latestBlockNumber, required) {
   };
 }
 
+let ocrRuntimeStatusCache = {
+  checkedAt: 0,
+  status: null
+};
+
+async function getOcrRuntimeStatus() {
+  const now = Date.now();
+  if (ocrRuntimeStatusCache.status && now - ocrRuntimeStatusCache.checkedAt < 60_000) {
+    return ocrRuntimeStatusCache.status;
+  }
+
+  const status = await new Promise((resolve) => {
+    execFile(
+      apiConfig.pythonPath,
+      ['-c', 'import pytesseract; print(str(pytesseract.get_tesseract_version()))'],
+      {
+        timeout: 5_000,
+        maxBuffer: 64 * 1024
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolve({
+            ok: false,
+            pythonPath: apiConfig.pythonPath,
+            error: String(stderr || error.message || 'OCR runtime check failed.').trim()
+          });
+          return;
+        }
+
+        resolve({
+          ok: true,
+          pythonPath: apiConfig.pythonPath,
+          engine: 'tesseract',
+          version: String(stdout || '').trim()
+        });
+      }
+    );
+  });
+
+  ocrRuntimeStatusCache = {
+    checkedAt: now,
+    status
+  };
+  return status;
+}
+
 async function respondWithHealth(response) {
   let databaseOk = false;
   try {
@@ -910,6 +989,7 @@ async function respondWithHealth(response) {
   }
 
   const contractsConfigured = hasCoreContractsConfigured();
+  const ocrRuntime = await getOcrRuntimeStatus();
   const storageOk =
     apiConfig.storageMode === 'supabase-s3'
       ? Boolean(
@@ -953,6 +1033,8 @@ async function respondWithHealth(response) {
     indexedPactsCount,
     storageOk,
     storageMode: apiConfig.storageMode,
+    ocrOk: ocrRuntime.ok,
+    ocrRuntime,
     syncLagBlocks,
     sync: [
       ...requiredSyncRows.map((row) => formatSyncStatusRow(row, latestBlockNumber, true)),
