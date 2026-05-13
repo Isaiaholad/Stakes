@@ -72,6 +72,23 @@ function defaultSessionCookieSecure(host) {
   return !['localhost', '127.0.0.1', '::1'].includes(normalizedHost);
 }
 
+function isHostedRuntime() {
+  return (
+    String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production' ||
+    Boolean(process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.RENDER_SERVICE_ID)
+  );
+}
+
+function normalizeApiHost(value) {
+  const host = String(value || '').trim() || '0.0.0.0';
+  const normalizedHost = host.toLowerCase();
+  if (isHostedRuntime() && ['localhost', '127.0.0.1', '::1'].includes(normalizedHost)) {
+    return '0.0.0.0';
+  }
+
+  return host;
+}
+
 function normalizeRpcUrl(value) {
   if (!value || String(value).startsWith('/')) {
     return getEnv('ARC_RPC_UPSTREAM_URL', 'https://rpc.testnet.arc.network');
@@ -88,13 +105,16 @@ export function isAddressConfigured(value) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value || ''));
 }
 
+const apiHost = normalizeApiHost(getEnv('API_HOST', ''));
+const apiPort = parseInteger(getEnv('PORT', getEnv('API_PORT', 8787)), 8787);
+
 export const apiConfig = {
   workspaceRoot,
   apiRoot,
   webRoot,
   zeroAddress,
-  host: getEnv('API_HOST', '') || '0.0.0.0',
-  port: parseInteger(getEnv('PORT', getEnv('API_PORT', 8787)), 8787),
+  host: apiHost,
+  port: apiPort,
   allowedOrigin: getEnv('ALLOWED_ORIGIN', '*'),
   databaseUrl: getEnv('DATABASE_URL', ''),
   databasePoolMax: parseInteger(getEnv('DATABASE_POOL_MAX', 4), 4),
@@ -115,7 +135,7 @@ export const apiConfig = {
   nonceTtlMinutes: parseInteger(getEnv('NONCE_TTL_MINUTES', 10), 10),
   sessionCookieSecure: parseBoolean(
     getEnv('SESSION_COOKIE_SECURE', ''),
-    defaultSessionCookieSecure(getEnv('API_HOST', '') || '0.0.0.0')
+    defaultSessionCookieSecure(apiHost)
   ),
   authNonceRateLimitMax: parseInteger(getEnv('AUTH_NONCE_RATE_LIMIT_MAX', 10), 10),
   authNonceRateLimitWindowMs: parseInteger(getEnv('AUTH_NONCE_RATE_LIMIT_WINDOW_MS', 10 * 60_000), 10 * 60_000),
