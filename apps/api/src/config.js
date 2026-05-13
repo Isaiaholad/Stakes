@@ -93,8 +93,8 @@ export const apiConfig = {
   apiRoot,
   webRoot,
   zeroAddress,
-  host: getEnv('API_HOST', '127.0.0.1'),
-  port: parseInteger(getEnv('API_PORT', 8787), 8787),
+  host: getEnv('API_HOST', '') || '0.0.0.0',
+  port: parseInteger(getEnv('PORT', getEnv('API_PORT', 8787)), 8787),
   allowedOrigin: getEnv('ALLOWED_ORIGIN', '*'),
   databaseUrl: getEnv('DATABASE_URL', ''),
   databasePoolMax: parseInteger(getEnv('DATABASE_POOL_MAX', 4), 4),
@@ -115,7 +115,7 @@ export const apiConfig = {
   nonceTtlMinutes: parseInteger(getEnv('NONCE_TTL_MINUTES', 10), 10),
   sessionCookieSecure: parseBoolean(
     getEnv('SESSION_COOKIE_SECURE', ''),
-    defaultSessionCookieSecure(getEnv('API_HOST', '127.0.0.1'))
+    defaultSessionCookieSecure(getEnv('API_HOST', '') || '0.0.0.0')
   ),
   authNonceRateLimitMax: parseInteger(getEnv('AUTH_NONCE_RATE_LIMIT_MAX', 10), 10),
   authNonceRateLimitWindowMs: parseInteger(getEnv('AUTH_NONCE_RATE_LIMIT_WINDOW_MS', 10 * 60_000), 10 * 60_000),

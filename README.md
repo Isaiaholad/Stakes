@@ -119,7 +119,7 @@ CATBOX_UPLOAD_UPSTREAM_URL=https://catbox.moe
 ### `apps/api/.env`
 
 ```env
-API_HOST=127.0.0.1
+API_HOST=0.0.0.0
 API_PORT=8787
 ALLOWED_ORIGIN=*
 DATABASE_URL=postgresql://postgres.your-project-ref:your-password@aws-0-region.pooler.supabase.com:6543/postgres
@@ -175,6 +175,8 @@ USERNAME_REGISTRY_ADDRESS=0xYourUsernameRegistryAddress
 
 The API requires `DATABASE_URL`; local SQLite is no longer used. Keep Supabase service role keys, storage secrets, Privy secrets, and keeper private keys in local env files or deployment secret stores only.
 
+Render sets `PORT` automatically. The API prefers `PORT` over `API_PORT`, and `API_HOST=0.0.0.0` lets Render detect the open web-service port.
+
 ### `contracts/.env`
 
 ```env
@@ -196,6 +198,7 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 ## Deployment Notes
 
 - Deploy the API separately from the static web app, for example on Render or another Node host.
+- On Render, use `Root Directory: apps/api`, `Build Command: npm install && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`, and `Start Command: npm run dev`.
 - The API host must have `DATABASE_URL`, Arc RPC, contract addresses, Privy server credentials, Supabase Storage credentials, and Python OCR dependencies available.
 - On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
 - Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://` and without `/api`. Example: `stakewithfriends-api.onrender.com`.
