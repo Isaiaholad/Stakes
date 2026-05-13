@@ -114,7 +114,7 @@ VITE_API_BASE_URL=
 CATBOX_UPLOAD_UPSTREAM_URL=https://catbox.moe
 ```
 
-`VITE_RPC_URL=/rpc/arc` keeps browser chain reads same-origin. `VITE_API_UPSTREAM_URL` is only used by the local Vite proxy. Leave `VITE_API_BASE_URL` empty when using the same-origin `/api` Vercel rewrite; set it to a full API URL only if you intentionally want the browser to call the API host directly.
+`VITE_RPC_URL=/rpc/arc` keeps browser chain reads same-origin. `VITE_API_UPSTREAM_URL` is only used by the local Vite proxy. Leave `VITE_API_BASE_URL` empty locally to use `/api`; set it to a full API base URL such as `https://stakeswithfriends.onrender.com/api` when the browser should call the API host directly.
 
 ### `apps/api/.env`
 
@@ -203,6 +203,7 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 - On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
 - Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://`, without `/api`, and without a trailing slash. Example: `stakewithfriends-api.onrender.com`.
 - If Vercel returns `DNS_HOSTNAME_NOT_FOUND` or `NOT_FOUND` for `/api/*`, `API_UPSTREAM_URL` is missing or malformed. Save the hostname-only Render value for Production, Preview, and Development as needed, then redeploy.
+- To bypass Vercel API rewrites entirely, set Vercel `VITE_API_BASE_URL=https://stakeswithfriends.onrender.com/api`; the production web app also falls back to that Render API host on `stakeswithfriends.vercel.app`.
 - Keep frontend private keys out of Vercel. The web app only needs public Vite env values.
 - Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads use the same-domain Arc rewrite.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied from secrets.

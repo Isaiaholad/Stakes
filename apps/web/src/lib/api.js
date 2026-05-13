@@ -1,4 +1,17 @@
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+function resolveApiBaseUrl() {
+  const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+  if (configuredApiBaseUrl) {
+    return configuredApiBaseUrl;
+  }
+
+  if (typeof window !== 'undefined' && window.location.hostname === 'stakeswithfriends.vercel.app') {
+    return 'https://stakeswithfriends.onrender.com/api';
+  }
+
+  return '/api';
+}
+
+const apiBaseUrl = resolveApiBaseUrl().replace(/\/+$/, '') || '/api';
 
 function joinUrl(pathname) {
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;

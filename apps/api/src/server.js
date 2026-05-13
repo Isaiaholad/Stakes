@@ -1649,7 +1649,7 @@ async function requestHandler(request, response) {
   }
 
   try {
-    if (request.method === 'GET' && url.pathname === '/api/health/startup') {
+    if (request.method === 'GET' && (url.pathname === '/api/health' || url.pathname === '/api/health/startup')) {
       await respondWithHealth(response);
       return;
     }
