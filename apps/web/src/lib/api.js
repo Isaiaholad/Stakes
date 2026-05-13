@@ -4,7 +4,10 @@ function resolveApiBaseUrl() {
     return configuredApiBaseUrl;
   }
 
-  if (typeof window !== 'undefined' && window.location.hostname === 'stakeswithfriends.vercel.app') {
+  if (
+    typeof window !== 'undefined' &&
+    !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+  ) {
     return 'https://stakeswithfriends.onrender.com/api';
   }
 

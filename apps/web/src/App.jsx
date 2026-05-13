@@ -13,7 +13,7 @@ const ExplorePage = lazy(() => import('./pages/JoinPage.jsx'));
 const VaultPage = lazy(() => import('./pages/WalletPage.jsx'));
 const AdminPage = lazy(() => import('./pages/AdminPage.jsx'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage.jsx'));
-const cacheResetVersion = '2026-05-07-upload-auth-cache-v3';
+const cacheResetVersion = '2026-05-13-render-api-fallback-v1';
 const cacheResetStorageKey = 'stakewithfriends-cache-reset-version';
 
 function isLocalDevHost() {

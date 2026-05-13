@@ -203,7 +203,7 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 - On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
 - Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://`, without `/api`, and without a trailing slash. Example: `stakewithfriends-api.onrender.com`.
 - If Vercel returns `DNS_HOSTNAME_NOT_FOUND` or `NOT_FOUND` for `/api/*`, `API_UPSTREAM_URL` is missing or malformed. Save the hostname-only Render value for Production, Preview, and Development as needed, then redeploy.
-- To bypass Vercel API rewrites entirely, set Vercel `VITE_API_BASE_URL=https://stakeswithfriends.onrender.com/api`; the production web app also falls back to that Render API host on `stakeswithfriends.vercel.app`.
+- To bypass Vercel API rewrites entirely, set Vercel `VITE_API_BASE_URL=https://stakeswithfriends.onrender.com/api`; the production web app also falls back to that Render API host on non-local browser hosts.
 - Keep frontend private keys out of Vercel. The web app only needs public Vite env values.
 - Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads use the same-domain Arc rewrite.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied from secrets.
