@@ -11,7 +11,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://$API_UPSTREAM_URL/:path*"
+      "destination": "$API_UPSTREAM_URL/:path*"
     },
     {
       "source": "/create",

@@ -201,8 +201,8 @@ PRIVATE_KEY=your-deployer-private-key npm run contracts:deploy:username-registry
 - On Render, use `Root Directory: apps/api`, `Build Command: npm install && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`, and `Start Command: npm start`.
 - The API host must have `DATABASE_URL`, Arc RPC, contract addresses, Privy server credentials, Supabase Storage credentials, and Python OCR dependencies available.
 - On Vercel, deploy from the repository root. The root [vercel.json](vercel.json) runs `npm run build:web` and publishes `apps/web/dist`.
-- Set Vercel `API_UPSTREAM_URL` to the API hostname only, without `https://` and without `/api`. Example: `stakewithfriends-api.onrender.com`.
-- If Vercel returns `DNS_HOSTNAME_NOT_FOUND` for `/api/*`, `API_UPSTREAM_URL` is missing or malformed. Remove `https://` from the value, save it for Production, Preview, and Development as needed, then redeploy.
+- Set Vercel `API_UPSTREAM_URL` to the full API origin, without a trailing slash. Example: `https://stakewithfriends-api.onrender.com`.
+- If Vercel returns `DNS_HOSTNAME_NOT_FOUND` for `/api/*`, `API_UPSTREAM_URL` is missing, malformed, or still using an old deployment config. Save the full Render origin for Production, Preview, and Development as needed, then redeploy.
 - Keep frontend private keys out of Vercel. The web app only needs public Vite env values.
 - Keep `VITE_RPC_URL=/rpc/arc` so browser RPC reads use the same-domain Arc rewrite.
 - Timed autonomous settlement needs the API keeper running with `AUTONOMOUS_KEEPER_ENABLED=true` and a funded keeper key supplied from secrets.

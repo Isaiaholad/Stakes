@@ -46,7 +46,7 @@ export async function fetchJson(pathname, options = {}) {
     if (payload?.error) {
       errorMessage = typeof payload.error === 'string' ? payload.error : (payload.error.message || JSON.stringify(payload.error));
     } else if (/DNS_HOSTNAME_NOT_FOUND/i.test(textPayload)) {
-      errorMessage = 'The API backend is not reachable from Vercel. Check API_UPSTREAM_URL in Vercel and redeploy.';
+      errorMessage = 'The API backend is not reachable from Vercel. Set API_UPSTREAM_URL to the full Render API origin, then redeploy.';
     } else if (/An error occurred with this application/i.test(textPayload)) {
       errorMessage = 'The API proxy returned a Vercel application error. Check the backend URL and API deployment logs.';
     } else if (textPayload.trim()) {
