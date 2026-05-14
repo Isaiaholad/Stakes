@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink } from 'lucide-react';
+import { Check, Copy, ExternalLink } from 'lucide-react';
 import ConnectionStatusCard from '../components/ConnectionStatusCard.jsx';
 import ConfigBanner from '../components/ConfigBanner.jsx';
 import ConnectCard from '../components/ConnectCard.jsx';
@@ -38,6 +38,14 @@ function parseTokenUnits(value, decimals) {
   }
 }
 
+function maskWalletAddress(address) {
+  if (!address || address.length <= 12) {
+    return address || '';
+  }
+
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 export default function WalletPage() {
   const queryClient = useQueryClient();
   const address = useWalletStore((state) => state.address);
@@ -48,6 +56,8 @@ export default function WalletPage() {
   const [depositFlowStep, setDepositFlowStep] = useState('idle');
   const [withdrawAmount, setWithdrawAmount] = useState('10');
   const [usernameInput, setUsernameInput] = useState('');
+  const [addressCopied, setAddressCopied] = useState(false);
+  const copyResetRef = useRef(null);
 
   const query = useQuery({
     queryKey: ['vault', address],
@@ -68,6 +78,45 @@ export default function WalletPage() {
       setUsernameInput(usernameQuery.data);
     }
   }, [usernameQuery.data]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetRef.current) {
+        window.clearTimeout(copyResetRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopyWalletAddress = async () => {
+    if (!address) {
+      return;
+    }
+
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard access is unavailable.');
+      }
+
+      await navigator.clipboard.writeText(address);
+      setAddressCopied(true);
+      showToast({
+        variant: 'success',
+        title: 'Wallet address copied',
+        message: 'Your connected wallet address is ready to paste.'
+      });
+
+      if (copyResetRef.current) {
+        window.clearTimeout(copyResetRef.current);
+      }
+      copyResetRef.current = window.setTimeout(() => setAddressCopied(false), 2000);
+    } catch (error) {
+      showToast({
+        variant: 'error',
+        title: 'Copy failed',
+        message: error?.message || 'Copy the wallet address manually.'
+      });
+    }
+  };
 
   const depositMutation = useMutation({
     mutationFn: async () => {
@@ -213,6 +262,7 @@ export default function WalletPage() {
       ? 'Approve + deposit stablecoin'
       : 'Deposit stablecoin';
   const normalizedUsername = normalizeUsername(usernameInput);
+  const maskedAddress = maskWalletAddress(address);
 
   let depositValidationError = '';
   if (!depositValue || depositValue <= 0) {
@@ -279,13 +329,28 @@ export default function WalletPage() {
         <p className="mt-3 text-sm text-sand/70">
           Reserved: {formatToken(query.data.reservedBalance, query.data.symbol)} | Wallet: {formatToken(query.data.walletBalance, query.data.symbol)}
         </p>
+        <div className="mt-4 rounded-[24px] bg-sand/10 p-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-sand/50">Connected wallet</p>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <p className="min-w-0 flex-1 font-mono text-sm text-sand">{maskedAddress}</p>
+            <button
+              type="button"
+              onClick={handleCopyWalletAddress}
+              aria-label="Copy wallet address"
+              title={addressCopied ? 'Copied' : 'Copy wallet address'}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-sand text-ink"
+            >
+              {addressCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
         <a
           href={circleFaucetUrl}
           target="_blank"
           rel="noreferrer"
           className="mt-4 inline-flex items-center gap-2 rounded-full bg-sand px-4 py-2 text-sm font-semibold text-ink"
         >
-          Get testnet USDC
+          Get Arc Testnet USDC from Circle faucet
           <ExternalLink className="h-4 w-4" />
         </a>
       </section>
@@ -317,20 +382,7 @@ export default function WalletPage() {
           </p>
         ) : null}
         {depositValidationError ? (
-          <div className="mt-3 space-y-2 text-sm text-amber-700">
-            <p>{depositValidationError}</p>
-            {depositValue > walletBalance ? (
-              <a
-                href={circleFaucetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 font-semibold underline underline-offset-4"
-              >
-                Get Arc Testnet USDC from Circle faucet
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            ) : null}
-          </div>
+          <p className="mt-3 text-sm text-amber-700">{depositValidationError}</p>
         ) : null}
       </section>
 

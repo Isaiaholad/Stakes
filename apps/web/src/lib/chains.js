@@ -68,12 +68,27 @@ function resolveWalletRpcUrl(chain) {
 
 export const walletRpcUrl = resolveWalletRpcUrl(supportedChain);
 
+export const walletSupportedChain = {
+  ...supportedChain,
+  rpcUrls: {
+    ...supportedChain.rpcUrls,
+    default: {
+      ...supportedChain.rpcUrls?.default,
+      http: [walletRpcUrl]
+    },
+    public: {
+      ...supportedChain.rpcUrls?.public,
+      http: [walletRpcUrl]
+    }
+  }
+};
+
 export const supportedChainParams = {
-  chainId: `0x${supportedChain.id.toString(16)}`,
-  chainName: supportedChain.name,
-  nativeCurrency: supportedChain.nativeCurrency,
+  chainId: `0x${walletSupportedChain.id.toString(16)}`,
+  chainName: walletSupportedChain.name,
+  nativeCurrency: walletSupportedChain.nativeCurrency,
   rpcUrls: [walletRpcUrl],
-  blockExplorerUrls: supportedChain.blockExplorers?.default?.url
-    ? [supportedChain.blockExplorers.default.url]
+  blockExplorerUrls: walletSupportedChain.blockExplorers?.default?.url
+    ? [walletSupportedChain.blockExplorers.default.url]
     : []
 };

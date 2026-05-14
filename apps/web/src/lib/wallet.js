@@ -151,9 +151,9 @@ async function requestSupportedChainSwitch(provider) {
   });
 }
 
-export async function switchToSupportedChain(provider = getInjectedProvider()) {
+export async function switchToSupportedChain(provider = getActiveProvider()) {
   if (!provider) {
-    throw new Error('No injected wallet found.');
+    throw new Error('No wallet provider is ready.');
   }
 
   const currentChainId = normalizeChainId(await provider.request({ method: 'eth_chainId' }));

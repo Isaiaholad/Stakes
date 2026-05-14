@@ -6,6 +6,7 @@ import { PrivyProvider } from '@privy-io/react-auth';
 import App from './App.jsx';
 import PrivyWalletBridge from './components/PrivyWalletBridge.jsx';
 import { isTransientReadError } from './lib/appErrors.js';
+import { walletSupportedChain } from './lib/chains.js';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -31,13 +32,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       appId={import.meta.env.VITE_PRIVY_APP_ID || ''}
       config={{
         loginMethods: ['google', 'email', 'wallet'],
+        defaultChain: walletSupportedChain,
+        supportedChains: [walletSupportedChain],
         embeddedWallets: {
-          createOnLogin: 'users-without-wallets'
+          ethereum: {
+            createOnLogin: 'users-without-wallets'
+          }
         },
         appearance: {
           theme: 'light',
           accentColor: '#ff6b4a',
-          logo: '/icons/icon.svg'
+          logo: '/icons/icon.svg',
+          walletChainType: 'ethereum-only'
         }
       }}
     >
