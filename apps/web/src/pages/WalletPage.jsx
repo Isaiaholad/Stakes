@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ExternalLink } from 'lucide-react';
 import ConnectionStatusCard from '../components/ConnectionStatusCard.jsx';
 import ConfigBanner from '../components/ConfigBanner.jsx';
 import ConnectCard from '../components/ConnectCard.jsx';
 import ReadStatusNote from '../components/ReadStatusNote.jsx';
 import { hasUsernameRegistryConfigured, isProtocolConfigured } from '../lib/contracts.js';
+import { circleFaucetUrl } from '../lib/externalLinks.js';
 import { formatToken } from '../lib/formatters.js';
 import {
   approveVault,
@@ -277,6 +279,15 @@ export default function WalletPage() {
         <p className="mt-3 text-sm text-sand/70">
           Reserved: {formatToken(query.data.reservedBalance, query.data.symbol)} | Wallet: {formatToken(query.data.walletBalance, query.data.symbol)}
         </p>
+        <a
+          href={circleFaucetUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-4 inline-flex items-center gap-2 rounded-full bg-sand px-4 py-2 text-sm font-semibold text-ink"
+        >
+          Get testnet USDC
+          <ExternalLink className="h-4 w-4" />
+        </a>
       </section>
 
       <section className="rounded-[32px] bg-white/85 p-5 shadow-glow">
@@ -305,7 +316,22 @@ export default function WalletPage() {
             First-time deposits need two wallet confirmations: one for approval, then one for the deposit itself.
           </p>
         ) : null}
-        {depositValidationError ? <p className="mt-3 text-sm text-amber-700">{depositValidationError}</p> : null}
+        {depositValidationError ? (
+          <div className="mt-3 space-y-2 text-sm text-amber-700">
+            <p>{depositValidationError}</p>
+            {depositValue > walletBalance ? (
+              <a
+                href={circleFaucetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 font-semibold underline underline-offset-4"
+              >
+                Get Arc Testnet USDC from Circle faucet
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-[32px] bg-white/85 p-5 shadow-glow">

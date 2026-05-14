@@ -110,6 +110,51 @@ export function normalizeChainId(chainId) {
   return typeof chainId === 'string' ? Number.parseInt(chainId, 16) : Number(chainId);
 }
 
+function collectWalletErrorDetails(error, details = { codes: [], messages: [] }, visited = new Set()) {
+  if (!error || typeof error !== 'object' || visited.has(error)) {
+    return details;
+  }
+
+  visited.add(error);
+
+  if ('code' in error) {
+    details.codes.push(error.code);
+  }
+
+  if (typeof error.message === 'string') {
+    details.messages.push(error.message);
+  }
+
+  collectWalletErrorDetails(error.data, details, visited);
+  collectWalletErrorDetails(error.error, details, visited);
+  collectWalletErrorDetails(error.originalError, details, visited);
+
+  return details;
+}
+
+function isUnrecognizedChainError(error) {
+  const details = collectWalletErrorDetails(error);
+  const message = details.messages.join(' ').toLowerCase();
+  return (
+    details.codes.some((code) => Number(code) === 4902) ||
+    /unrecognized chain|unknown chain|chain .*not( been)? added|add ethereum chain|wallet_addethereumchain/i.test(message)
+  );
+}
+
+async function addSupportedChain(provider) {
+  await provider.request({
+    method: 'wallet_addEthereumChain',
+    params: [supportedChainParams]
+  });
+}
+
+async function requestSupportedChainSwitch(provider) {
+  await provider.request({
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId: supportedChainParams.chainId }]
+  });
+}
+
 export async function switchToSupportedChain(provider = getInjectedProvider()) {
   if (!provider) {
     throw new Error('No injected wallet found.');
@@ -122,16 +167,14 @@ export async function switchToSupportedChain(provider = getInjectedProvider()) {
   }
 
   try {
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: supportedChainParams.chainId }]
-    });
+    await requestSupportedChainSwitch(provider);
   } catch (error) {
-    if (error.code === 4902) {
-      await provider.request({
-        method: 'wallet_addEthereumChain',
-        params: [supportedChainParams]
-      });
+    if (isUnrecognizedChainError(error)) {
+      await addSupportedChain(provider);
+      const addedChainId = normalizeChainId(await provider.request({ method: 'eth_chainId' }).catch(() => null));
+      if (addedChainId !== supportedChain.id) {
+        await requestSupportedChainSwitch(provider);
+      }
     } else {
       throw error;
     }

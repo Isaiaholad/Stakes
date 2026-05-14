@@ -35,15 +35,21 @@ const chainMap = {
 
 export const supportedChain = chainMap[protocolConfig.chainId] || arcTestnet;
 
+function resolveWalletRpcUrl(chain) {
+  return (
+    import.meta.env.ARC_RPC_UPSTREAM_URL ||
+    import.meta.env.VITE_BASE_RPC_URL ||
+    (String(protocolConfig.rpcUrl || '').startsWith('http') ? protocolConfig.rpcUrl : '') ||
+    chain.rpcUrls?.default?.http?.find((rpcUrl) => String(rpcUrl).startsWith('http')) ||
+    'https://rpc.testnet.arc.network'
+  );
+}
+
 export const supportedChainParams = {
   chainId: `0x${supportedChain.id.toString(16)}`,
   chainName: supportedChain.name,
   nativeCurrency: supportedChain.nativeCurrency,
-  rpcUrls: {
-    default: {
-      http: [protocolConfig.rpcUrl]
-    }
-  },
+  rpcUrls: [resolveWalletRpcUrl(supportedChain)],
   blockExplorerUrls: supportedChain.blockExplorers?.default?.url
     ? [supportedChain.blockExplorers.default.url]
     : []

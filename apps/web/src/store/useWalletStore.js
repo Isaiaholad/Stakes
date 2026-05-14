@@ -187,13 +187,13 @@ export const useWalletStore = create((set, get) => ({
       set({ status: 'connecting', error: '', connector: 'walletconnect' });
       const provider = await getWalletConnectProvider();
       const connection = await requestWalletConnection(provider);
-      await switchToSupportedChain(provider);
+      const chainId = await switchToSupportedChain(provider);
       writeManualDisconnectPreference(false);
       setActiveProvider(provider, 'walletconnect');
 
       set({
         address: connection.address,
-        chainId: supportedChainIdFallback(connection.chainId),
+        chainId: supportedChainIdFallback(chainId),
         providerReady: true,
         injectedReady: Boolean(getInjectedProvider()),
         walletConnectReady: true,
