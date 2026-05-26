@@ -42,6 +42,7 @@ export default function PactEvidenceCard({
   now
 }) {
   const isHttpUrl = (value) => /^https?:\/\//i.test(String(value || ''));
+  const isChess = String(pact?.eventType || '').toLowerCase() === 'chess';
 
   if (pact.rawStatus !== 'Disputed') {
     return null;
@@ -54,7 +55,9 @@ export default function PactEvidenceCard({
         <p className="font-display text-2xl text-ink">Dispute evidence</p>
       </div>
       <p className="mt-2 text-sm text-slate/70">
-        Add proof for the arbiter to review.
+        {isChess
+          ? 'Submit the verified game URL evidence or extra context for the admin to review.'
+          : 'Add proof for the arbiter to review.'}
       </p>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -87,7 +90,9 @@ export default function PactEvidenceCard({
               <div>
                 <p className="text-sm font-semibold text-ink">Upload proof</p>
                 <p className="mt-1 text-xs text-slate/60">
-                  Add screenshots or short videos that help explain what happened.
+                  {isChess
+                    ? 'Your submitted chess URL is available below. Add extra notes, screenshots, or short videos only if they help explain the dispute.'
+                    : 'Add screenshots or short videos that help explain what happened.'}
                 </p>
               </div>
               <Upload className="h-5 w-5 text-rose-600" />

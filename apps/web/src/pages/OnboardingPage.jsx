@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Flag, Shield, Sparkles, Trophy, Upload, Wallet } from 'lucide-react';
+import { CheckCircle2, Flag, Link2, Shield, Sparkles, Trophy, Upload, Wallet } from 'lucide-react';
 import ConnectCard from '../components/ConnectCard.jsx';
 import EvidenceExamples from '../components/EvidenceExamples.jsx';
 import { shortenAddress } from '../lib/formatters.js';
@@ -28,13 +28,13 @@ const steps = [
     icon: Flag
   },
   {
-    title: 'Upload match evidence',
-    body: 'After the match, upload a clear final result screen where the winner and score are easy to read.',
+    title: 'Submit match evidence',
+    body: 'eFootball uses a clear final-result screenshot. Chess asks both players to submit a verified Chess.com or Lichess game URL copied from the result/share screen.',
     icon: Upload
   },
   {
     title: 'Settle securely',
-    body: 'AI checks the result first. Unclear or conflicting proof falls back to admin dispute review.',
+    body: 'Matching verified results settle automatically. Conflicting verified results move into dispute/admin review.',
     icon: Trophy
   }
 ];
@@ -44,7 +44,8 @@ const checklist = [
   'Get Arc Testnet USDC from the faucet.',
   'Deposit USDC into your vault.',
   'Create a pact or browse open pacts.',
-  'Upload a clean result screenshot after play.'
+  'For eFootball, upload a clean result screenshot after play.',
+  'For Chess.com or Lichess, both players copy and submit the shared game URL from the result page.'
 ];
 
 export default function OnboardingPage() {
@@ -64,7 +65,7 @@ export default function OnboardingPage() {
         </p>
         <h1 className="mt-4 font-display text-4xl leading-tight">Play first. Escrow keeps it fair.</h1>
         <p className="mt-3 text-sm leading-6 text-sand/70">
-          StakesWithFriends helps competitive players lock USDC, play on external games, upload proof, and settle results with an AI result check.
+          StakesWithFriends helps competitive players lock USDC, play on external games, submit proof, and settle results with an AI result check.
         </p>
         <div className="mt-5 grid gap-3">
           <Link to="/create" className="rounded-full bg-coral px-5 py-4 text-center text-sm font-semibold text-white">
@@ -117,7 +118,32 @@ export default function OnboardingPage() {
         </div>
       </section>
 
-      <EvidenceExamples description="These examples are redacted, but they show the kind of final-result screens that help AI and admins verify outcomes faster." />
+      <EvidenceExamples description="These examples are redacted, but they show the kind of final-result screens and result context that make verification easier." />
+
+      <section className="rounded-[32px] border border-amber-200 bg-amber-50/85 p-5 shadow-glow">
+        <div className="flex items-start gap-3">
+          <div className="rounded-[18px] bg-white p-3 text-amber-700">
+            <Link2 className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-display text-3xl text-ink">Chess evidence is a game URL</p>
+            <p className="mt-2 text-sm leading-6 text-amber-950">
+              Chess pacts support Chess.com and Lichess URL verification from both players. After the game ends, each player opens the final result page, taps or clicks the platform Share button, copies the game URL, then pastes it into StakesWithFriends on the pact result page.
+            </p>
+            <div className="mt-4 grid gap-3 text-sm text-amber-950">
+              <div className="rounded-[20px] bg-white/75 px-4 py-3">
+                <span className="font-semibold">Chess.com:</span> use the shared game link, for example <span className="font-mono text-xs">chess.com/game/...</span> or <span className="font-mono text-xs">chess.com/game/live/...</span>
+              </div>
+              <div className="rounded-[20px] bg-white/75 px-4 py-3">
+                <span className="font-semibold">Lichess:</span> use the game link, for example <span className="font-mono text-xs">lichess.org/...</span>
+              </div>
+              <div className="rounded-[20px] bg-white/75 px-4 py-3">
+                StakesWithFriends checks locked usernames, locked colors, and pact timing. Matching verified URLs settle automatically; conflicting verified URLs move into dispute/admin review.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-[32px] bg-white/85 p-5 shadow-glow">
         <p className="font-display text-3xl text-ink">Ready checklist</p>

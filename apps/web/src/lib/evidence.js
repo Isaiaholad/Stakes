@@ -91,7 +91,7 @@ export async function storeEvidenceMetadata(metadata) {
   });
 }
 
-export async function analyzePactEvidence({ pactId, address }) {
+export async function analyzePactEvidence({ pactId, address, gameUrl = '' }) {
   const requesterAddress = String(address || '').trim();
   if (!requesterAddress) {
     throw new Error('Connect your wallet before asking AI to analyze the result screenshot.');
@@ -100,7 +100,8 @@ export async function analyzePactEvidence({ pactId, address }) {
   return await fetchJson(`/pacts/${pactId}/analyze-evidence`, {
     method: 'POST',
     body: JSON.stringify({
-      address: requesterAddress
+      address: requesterAddress,
+      gameUrl
     })
   });
 }

@@ -51,7 +51,15 @@ describe('indexed pact API reads', () => {
       .mockResolvedValueOnce(jsonResponse({ pact: { id: 7, stage: 'Completed' } }))
       .mockResolvedValueOnce(jsonResponse({ protocol: { isAdmin: true }, pacts: [{ id: 5 }] }));
 
-    const { readAdminQueue, readAllPacts, readOpenPacts, readPactById } = await loadPactsModule();
+    const {
+      readAdminQueue,
+      readAllPacts,
+      readLeaderboard,
+      readOpenPacts,
+      readPactById,
+      readPactGameMetadata,
+      storePactGameMetadata
+    } = await loadPactsModule();
 
     await expect(readAllPacts('0xabc', { limit: 12 })).resolves.toEqual([
       { id: 7, stage: 'Completed', participantRole: 'creator' }
@@ -62,6 +70,34 @@ describe('indexed pact API reads', () => {
       protocol: { isAdmin: true },
       pacts: [{ id: 5 }]
     });
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({
+        leaderboard: [{ rank: 1, address: '0xabc', displayName: '@alpha', points: 90 }],
+        availableGames: ['eFootball'],
+        pointsModel: 'balanced-xp-v1',
+        updatedAt: '2026-05-19T00:00:00.000Z',
+        viewerRank: { rank: 1, address: '0xabc', displayName: '@alpha', points: 90 }
+      })
+    );
+    await expect(readLeaderboard({ game: 'all', limit: 50, address: '0xabc' })).resolves.toMatchObject({
+      leaderboard: [{ rank: 1, address: '0xabc', displayName: '@alpha', points: 90 }],
+      availableGames: ['eFootball'],
+      pointsModel: 'balanced-xp-v1',
+      updatedAt: '2026-05-19T00:00:00.000Z',
+      viewerRank: { rank: 1, address: '0xabc', displayName: '@alpha', points: 90 }
+    });
+    global.fetch
+      .mockResolvedValueOnce(jsonResponse({ metadata: { pactId: 7, platform: 'chess.com' } }))
+      .mockResolvedValueOnce(jsonResponse({ metadata: { pactId: 7, creatorPlatformUsername: 'KOLADEKKT' } }));
+    await expect(readPactGameMetadata(7)).resolves.toEqual({ pactId: 7, platform: 'chess.com' });
+    await expect(
+      storePactGameMetadata(7, {
+        address: '0xabc',
+        platform: 'lichess',
+        chessUsername: 'KOLADEKKT',
+        chessColor: 'White'
+      })
+    ).resolves.toEqual({ pactId: 7, creatorPlatformUsername: 'KOLADEKKT' });
     expect(ensureWalletSession).toHaveBeenCalledWith('0xabc', 'Connect your wallet before opening the admin queue.');
 
     expect(global.fetch).toHaveBeenNthCalledWith(
@@ -83,6 +119,30 @@ describe('indexed pact API reads', () => {
       4,
       '/api/admin/queue?address=0xabc&limit=50',
       expect.objectContaining({ credentials: 'include' })
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      5,
+      '/api/leaderboard?game=all&limit=50&address=0xabc',
+      expect.objectContaining({ credentials: 'include' })
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      6,
+      '/api/pacts/7/game-metadata',
+      expect.objectContaining({ credentials: 'include' })
+    );
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      7,
+      '/api/pacts/7/game-metadata',
+      expect.objectContaining({
+        credentials: 'include',
+        method: 'POST',
+        body: JSON.stringify({
+          address: '0xabc',
+          platform: 'lichess',
+          chessUsername: 'KOLADEKKT',
+          chessColor: 'White'
+        })
+      })
     );
   }, apiReadTestTimeoutMs);
 

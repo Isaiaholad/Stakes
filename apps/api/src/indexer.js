@@ -257,11 +257,11 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
       ]
     );
 
-    upsertParticipant(pactId, decoded.args.creator, 'creator', updatedAt);
+    await upsertParticipant(pactId, decoded.args.creator, 'creator', updatedAt);
     if (decoded.args.counterparty !== zeroAddress) {
-      upsertParticipant(pactId, decoded.args.counterparty, 'counterparty', updatedAt);
+      await upsertParticipant(pactId, decoded.args.counterparty, 'counterparty', updatedAt);
     }
-    refreshAdminQueue(pactId);
+    await refreshAdminQueue(pactId);
     return;
   }
 
@@ -294,8 +294,8 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
       ]
     );
 
-    upsertParticipant(pactId, decoded.args.counterparty, 'counterparty', updatedAt);
-    refreshAdminQueue(pactId);
+    await upsertParticipant(pactId, decoded.args.counterparty, 'counterparty', updatedAt);
+    await refreshAdminQueue(pactId);
     return;
   }
 
@@ -312,7 +312,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
       `,
       [Number(log.blockNumber), decoded.eventName, updatedAt, pactId]
     );
-    refreshAdminQueue(pactId);
+    await refreshAdminQueue(pactId);
     return;
   }
 
@@ -329,7 +329,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
       `,
       [Number(log.blockNumber), decoded.eventName, updatedAt, pactId]
     );
-    refreshAdminQueue(pactId);
+    await refreshAdminQueue(pactId);
     return;
   }
 
@@ -357,7 +357,7 @@ async function applyPactManagerEvent(log, decoded, blockTime) {
         pactId
       ]
     );
-    refreshAdminQueue(pactId);
+    await refreshAdminQueue(pactId);
   }
 }
 
@@ -397,7 +397,7 @@ async function applyWinnerDeclared(log, decoded, blockTime) {
     ]
   );
 
-  refreshAdminQueue(pactId);
+  await refreshAdminQueue(pactId);
 }
 
 async function applyEvidenceSubmitted(log, decoded, blockTime) {
@@ -436,7 +436,7 @@ async function applyEvidenceSubmitted(log, decoded, blockTime) {
     ]
   );
 
-  refreshAdminQueue(pactId);
+  await refreshAdminQueue(pactId);
 }
 
 async function applyFeeSnapshot(log, decoded, blockTime) {
@@ -786,9 +786,9 @@ async function reconcileSinglePactFromState(pactId, addresses, runtime = {}) {
     ]
   );
 
-  upsertParticipant(pactId, creator, 'creator', updatedAt);
+  await upsertParticipant(pactId, creator, 'creator', updatedAt);
   if (counterparty && counterparty !== zeroAddress) {
-    upsertParticipant(pactId, counterparty, 'counterparty', updatedAt);
+    await upsertParticipant(pactId, counterparty, 'counterparty', updatedAt);
 
     const [creatorDeclaration, counterpartyDeclaration] = await Promise.all([
       readContractState(
@@ -811,8 +811,8 @@ async function reconcileSinglePactFromState(pactId, addresses, runtime = {}) {
       )
     ]);
 
-    upsertDeclarationState(pactId, creator, creatorDeclaration, updatedAt);
-    upsertDeclarationState(pactId, counterparty, counterpartyDeclaration, updatedAt);
+    await upsertDeclarationState(pactId, creator, creatorDeclaration, updatedAt);
+    await upsertDeclarationState(pactId, counterparty, counterpartyDeclaration, updatedAt);
 
     if ((rawStatusMap[Number(core[8])] || 'Unknown') === 'Disputed') {
       const [creatorEvidence, counterpartyEvidence] = await Promise.all([
@@ -836,12 +836,12 @@ async function reconcileSinglePactFromState(pactId, addresses, runtime = {}) {
         )
       ]);
 
-      upsertEvidenceState(pactId, creator, creatorEvidence, updatedAt);
-      upsertEvidenceState(pactId, counterparty, counterpartyEvidence, updatedAt);
+      await upsertEvidenceState(pactId, creator, creatorEvidence, updatedAt);
+      await upsertEvidenceState(pactId, counterparty, counterpartyEvidence, updatedAt);
     }
   }
 
-  refreshAdminQueue(pactId);
+  await refreshAdminQueue(pactId);
 }
 
 async function reconcilePactsFromState(runtime = {}) {
@@ -1034,7 +1034,7 @@ async function applyCoreLog(source, log, blockTimeCache, runtime = {}) {
     } catch {
       return;
     }
-    applyWinnerDeclared(log, decoded, blockTime);
+    await applyWinnerDeclared(log, decoded, blockTime);
     return;
   }
 
@@ -1051,7 +1051,7 @@ async function applyCoreLog(source, log, blockTimeCache, runtime = {}) {
     }
 
     if (decoded.eventName === 'DisputeEvidenceSubmitted') {
-      applyEvidenceSubmitted(log, decoded, blockTime);
+      await applyEvidenceSubmitted(log, decoded, blockTime);
     }
 
     if (decoded.eventName === 'PactDisputed') {
@@ -1063,7 +1063,7 @@ async function applyCoreLog(source, log, blockTimeCache, runtime = {}) {
         `,
         [Number(log.blockNumber), decoded.eventName, blockTime.iso, Number(decoded.args.pactId)]
       );
-      refreshAdminQueue(Number(decoded.args.pactId));
+      await refreshAdminQueue(Number(decoded.args.pactId));
     }
     return;
   }
@@ -1079,7 +1079,7 @@ async function applyCoreLog(source, log, blockTimeCache, runtime = {}) {
     } catch {
       return;
     }
-    applyFeeSnapshot(log, decoded, blockTime);
+    await applyFeeSnapshot(log, decoded, blockTime);
   }
 }
 
@@ -1095,7 +1095,7 @@ async function applyUsernameLog(log, blockTimeCache, runtime = {}) {
     return;
   }
   const blockTime = await getBlockTimeIso(log.blockNumber, blockTimeCache, runtime);
-  applyUsernameEvent(decoded, blockTime);
+  await applyUsernameEvent(decoded, blockTime);
 }
 
 async function fetchLogsForSource(source, fromBlock, toBlock, runtime = {}) {

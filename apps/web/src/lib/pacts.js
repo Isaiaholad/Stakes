@@ -1027,6 +1027,40 @@ async function fetchIndexedOpenPacts(currentAddress, limit) {
   return attachReadMeta(Array.isArray(payload.pacts) ? payload.pacts : [], 'indexed');
 }
 
+export async function readLeaderboard(options = {}) {
+  const payload = await fetchJson(
+    `/leaderboard${buildQueryString({
+      game: options.game || 'all',
+      limit: Number(options.limit || 50),
+      address: options.address || ''
+    })}`
+  );
+
+  return attachReadMeta(
+    {
+      leaderboard: Array.isArray(payload?.leaderboard) ? payload.leaderboard : [],
+      availableGames: Array.isArray(payload?.availableGames) ? payload.availableGames : [],
+      pointsModel: payload?.pointsModel || 'balanced-xp-v1',
+      updatedAt: payload?.updatedAt || '',
+      viewerRank: payload?.viewerRank || null
+    },
+    'indexed'
+  );
+}
+
+export async function readPactGameMetadata(pactId) {
+  const payload = await fetchJson(`/pacts/${Number(pactId)}/game-metadata`);
+  return payload?.metadata || null;
+}
+
+export async function storePactGameMetadata(pactId, metadata = {}) {
+  const payload = await fetchJson(`/pacts/${Number(pactId)}/game-metadata`, {
+    method: 'POST',
+    body: JSON.stringify(metadata)
+  });
+  return payload?.metadata || null;
+}
+
 function shouldSkipIndexedRead(preferIndexed) {
   return preferIndexed === false;
 }

@@ -3,11 +3,30 @@ import { Flag, Gavel, Wallet } from 'lucide-react';
 import EvidenceExamples from '../../components/EvidenceExamples.jsx';
 import { formatParticipantLabel, getDeclarationButtonShell } from './pactDetailUtils.js';
 
-const chessColors = ['White', 'Black'];
-
 function getCreatorChessColor(pact) {
   const match = String(pact?.description || '').match(/creator(?:'s)?\s+chess\s+color\s*:\s*(white|black)/i);
   return match?.[1] ? match[1].slice(0, 1).toUpperCase() + match[1].slice(1).toLowerCase() : '';
+}
+
+function getCreatorChessPlatform(pact) {
+  const match = String(pact?.description || '').match(/creator(?:'s)?\s+chess\s+platform\s*:\s*(chess\.com|lichess)/i);
+  const normalized = String(match?.[1] || '').toLowerCase();
+  return normalized === 'lichess' ? 'lichess' : 'chess.com';
+}
+
+function normalizeChessPlatform(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'lichess' || normalized === 'lichess.org' ? 'lichess' : 'chess.com';
+}
+
+function getChessPlatformLabel(platform) {
+  return normalizeChessPlatform(platform) === 'lichess' ? 'Lichess' : 'Chess.com';
+}
+
+function getChessUrlPlaceholder(platform) {
+  return normalizeChessPlatform(platform) === 'lichess'
+    ? 'https://lichess.org/3Rx1HG6H'
+    : 'https://www.chess.com/game/168982835114';
 }
 
 function getOppositeChessColor(color) {
@@ -33,9 +52,12 @@ export default function PactActionsCard({
   cancelExpiredMutation,
   declareMutation,
   analyzeEfootballResultMutation,
+  analyzeChessResultMutation,
+  gameMetadata,
   singleDeclarationDisputeMutation,
   mismatchDisputeMutation,
   settleMutation,
+  finalizeMatchedMutation,
   resolveWinnerMutation,
   resolveSplitMutation,
   forceDisputeSplitMutation,
@@ -54,7 +76,8 @@ export default function PactActionsCard({
   efootballEvidenceReady
 }) {
   const [joinUsernameDraft, setJoinUsernameDraft] = useState('');
-  const [joinChessColorDraft, setJoinChessColorDraft] = useState('');
+  const [joinChessUsernameDraft, setJoinChessUsernameDraft] = useState('');
+  const [chessGameUrlDraft, setChessGameUrlDraft] = useState('');
 
   if (!address) {
     return null;
@@ -69,9 +92,19 @@ export default function PactActionsCard({
       pact.creatorDeclaration.submitted);
   const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
   const isChess = String(pact.eventType || '').toLowerCase() === 'chess';
-  const creatorChessColor = getCreatorChessColor(pact);
+  const showDisputeFallbackActions = true;
+  const chessPlatform = normalizeChessPlatform(gameMetadata?.platform || getCreatorChessPlatform(pact));
+  const chessPlatformLabel = getChessPlatformLabel(chessPlatform);
+  const creatorChessColor = gameMetadata?.creatorColor || getCreatorChessColor(pact);
   const suggestedChessColor = getOppositeChessColor(creatorChessColor);
-  const joinChessColor = joinChessColorDraft || suggestedChessColor;
+  const creatorChessUsername = String(gameMetadata?.creatorPlatformUsername || '').trim();
+  const joinChessColor = suggestedChessColor;
+  const joinChessUsername = joinChessUsernameDraft.trim();
+  const joinChessUsernameMatchesCreator =
+    creatorChessUsername &&
+    joinChessUsername &&
+    creatorChessUsername.toLowerCase() === joinChessUsername.toLowerCase().replace(/^@+/, '');
+  const chessGameUrl = chessGameUrlDraft.trim() || gameMetadata?.gameUrl || '';
   const uploadedScreenshots = evidenceUploads?.filter((item) => item.status === 'uploaded').length || 0;
   const aiDetectionFailed = Boolean(analyzeEfootballResultMutation.isError);
   const canUseManualScreenshotFallback = Boolean(isEfootball && efootballEvidenceReady && aiDetectionFailed);
@@ -133,35 +166,43 @@ export default function PactActionsCard({
               </div>
             ) : isChess ? (
               <div className="rounded-[24px] border border-amber-200 bg-white p-4">
-                <p className="font-display text-xl text-ink">Choose your chess color</p>
+                <p className="font-display text-xl text-ink">Join with {chessPlatformLabel}</p>
                 <p className="mt-1 text-sm text-slate/70">
                   {creatorChessColor
-                    ? `The creator selected ${creatorChessColor}. Confirm the color you will play before joining.`
-                    : 'Confirm the color you will play before joining this chess pact.'}
+                    ? `The creator is locked to ${creatorChessColor}. You will play ${joinChessColor}.`
+                    : `The creator must lock a color before ${chessPlatformLabel} URL verification can work.`}
                 </p>
                 <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                  Your color
+                  Your {chessPlatformLabel} username
                 </label>
-                <select
-                  value={joinChessColor}
-                  onChange={(event) => setJoinChessColorDraft(event.target.value)}
+                <input
+                  value={joinChessUsernameDraft}
+                  onChange={(event) => setJoinChessUsernameDraft(event.target.value)}
+                  placeholder={chessPlatform === 'lichess' ? 'isaiaholad' : 'isco-olad'}
                   className="mt-2 w-full rounded-[22px] border border-amber-200 bg-amber-50/60 px-4 py-4 text-base font-semibold text-ink outline-none transition focus:border-amber-500 focus:bg-white"
-                >
-                  <option value="">Choose color</option>
-                  {chessColors.map((color) => (
-                    <option key={color} value={color}>
-                      {color}
-                    </option>
-                  ))}
-                </select>
+                />
+                <div className="mt-3 rounded-[18px] bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                  <span className="font-semibold">Locked color:</span> {joinChessColor || 'Waiting for creator color'}
+                </div>
+                {joinChessUsernameMatchesCreator ? (
+                  <p className="mt-2 text-xs text-rose-700">
+                    Use your own {chessPlatformLabel} username. It cannot match the creator's username.
+                  </p>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => joinMutation.mutate(joinChessColor)}
-                  disabled={joinMutation.isPending || Boolean(joinBalanceError) || !joinChessColor}
+                  onClick={() => joinMutation.mutate({ chessUsername: joinChessUsername, chessColor: joinChessColor, platform: chessPlatform })}
+                  disabled={
+                    joinMutation.isPending ||
+                    Boolean(joinBalanceError) ||
+                    !joinChessUsername ||
+                    !joinChessColor ||
+                    joinChessUsernameMatchesCreator
+                  }
                   className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-ink px-5 py-4 text-base font-semibold text-sand disabled:cursor-not-allowed disabled:opacity-55"
                 >
                   <Wallet className="h-5 w-5" />
-                  {joinMutation.isPending ? 'Joining pact...' : 'Join and save color'}
+                  {joinMutation.isPending ? 'Joining pact...' : `Join and save ${chessPlatformLabel} details`}
                 </button>
               </div>
             ) : (
@@ -208,7 +249,7 @@ export default function PactActionsCard({
             <div className="flex items-center gap-2">
               <Flag className="h-5 w-5 text-emerald-700" />
               <p className="font-display text-xl text-ink">
-                {isEfootball ? 'Upload result screenshot' : 'Submit winner declaration'}
+                {isEfootball ? 'Upload result screenshot' : isChess ? `Verify ${chessPlatformLabel} result` : 'Submit winner declaration'}
               </p>
             </div>
 
@@ -338,7 +379,50 @@ export default function PactActionsCard({
               </div>
             ) : null}
 
-            {!isEfootball ? (
+            {isChess ? (
+              <div className="mt-4 rounded-[16px] border border-amber-200 bg-white p-3">
+                <p className="text-sm font-semibold text-amber-950">Paste the {chessPlatformLabel} game URL</p>
+                <p className="mt-1 text-xs leading-5 text-amber-900">
+                  We verify the public result against the locked usernames and colors before submitting it on-chain.
+                </p>
+                <input
+                  value={chessGameUrlDraft}
+                  onChange={(event) => setChessGameUrlDraft(event.target.value)}
+                  placeholder={gameMetadata?.gameUrl || getChessUrlPlaceholder(chessPlatform)}
+                  className="mt-3 w-full rounded-[22px] border border-amber-200 bg-amber-50/60 px-4 py-4 text-sm font-semibold text-ink outline-none transition focus:border-amber-500 focus:bg-white"
+                />
+                <div className="mt-3 grid gap-2 rounded-[18px] bg-amber-50 px-4 py-3 text-xs text-amber-950 sm:grid-cols-2">
+                  <p><span className="font-semibold">Creator:</span> {creatorChessUsername || 'Missing'} as {creatorChessColor || 'Missing'}</p>
+                  <p><span className="font-semibold">Counterparty:</span> {gameMetadata?.counterpartyPlatformUsername || 'Missing'} as {gameMetadata?.counterpartyColor || 'Missing'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => analyzeChessResultMutation.mutate({ gameUrl: chessGameUrl })}
+                  disabled={
+                    !chessGameUrl ||
+                    analyzeChessResultMutation.isPending ||
+                    declareMutation.isPending ||
+                    !gameMetadata?.creatorPlatformUsername ||
+                    !gameMetadata?.counterpartyPlatformUsername ||
+                    !gameMetadata?.creatorColor ||
+                    !gameMetadata?.counterpartyColor
+                  }
+                  className="mt-3 w-full rounded-full bg-ink px-5 py-4 text-sm font-semibold text-sand disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {analyzeChessResultMutation.isPending ? `Checking ${chessPlatformLabel}...` : 'Verify URL and submit result'}
+                </button>
+                {analyzeChessResultMutation.isError ? (
+                  <div className="mt-4 rounded-[18px] border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                    <p className="text-sm font-semibold">URL verification could not auto-settle</p>
+                    <p className="mt-2 text-xs leading-5 text-amber-900">
+                      Check that the URL, {chessPlatformLabel} usernames, locked colors, and pact timing all match, then try again. If both players submit verified URLs that point to different winners, the pact moves into dispute/admin review.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!isEfootball && !isChess ? (
               <div className="mt-4 space-y-3">
                 {declarationOptions.map((option) => (
                   <button
@@ -378,10 +462,18 @@ export default function PactActionsCard({
             <p className="mt-2 text-sm text-emerald-900">
               The second matching declaration resolves this pact automatically on-chain. If this status lingers, the live read model is still catching up.
             </p>
+            <button
+              type="button"
+              onClick={() => finalizeMatchedMutation.mutate()}
+              disabled={finalizeMatchedMutation.isPending}
+              className="mt-3 w-full rounded-full bg-emerald-600 px-5 py-4 text-base font-semibold text-white disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {finalizeMatchedMutation.isPending ? 'Finalizing result...' : 'Finalize matched result'}
+            </button>
           </div>
         ) : null}
 
-        {conflictingResultWillAutoDispute ? (
+        {showDisputeFallbackActions && conflictingResultWillAutoDispute ? (
           <div className="rounded-[24px] border border-rose-200 bg-rose-50 p-4 text-rose-950">
             <p className="font-semibold">Conflicting declarations are ready for dispute</p>
             <p className="mt-2 text-sm text-rose-900">
@@ -402,11 +494,15 @@ export default function PactActionsCard({
           <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <p className="font-semibold">Declaration review period is still open</p>
             <p className="mt-2">
-              {currentWalletMissedDeclaration
-                ? 'This wallet missed the declaration window. You can still raise a dispute during the 30-minute review period before the lone declaration settles on-chain.'
-                : 'One side declared before the deadline. The pact now waits through its 30-minute review period before that declaration can settle on-chain.'}
+              {isChess
+                ? currentWalletMissedDeclaration
+                  ? 'The other player submitted a verified chess URL before the deadline. If that result is wrong, raise a dispute during this review period so an admin can review the submitted URL evidence.'
+                  : 'One verified chess URL was submitted before the deadline. The other player can raise a dispute during the review period if they missed the result window or disagree.'
+                : currentWalletMissedDeclaration
+                  ? 'This wallet missed the declaration window. You can still raise a dispute during the 30-minute review period before the lone declaration settles on-chain.'
+                  : 'One side declared before the deadline. The pact now waits through its 30-minute review period before that declaration can settle on-chain.'}
             </p>
-            {pact.canOpenUnansweredDeclarationDispute ? (
+            {showDisputeFallbackActions && pact.canOpenUnansweredDeclarationDispute ? (
               <button
                 type="button"
                 onClick={() => singleDeclarationDisputeMutation.mutate()}
@@ -437,7 +533,7 @@ export default function PactActionsCard({
           </div>
         ) : null}
 
-        {pact.canAdminResolve ? (
+        {showDisputeFallbackActions && pact.canAdminResolve ? (
           <div className="rounded-[24px] border border-amber-300 bg-amber-50 p-4">
             <div className="flex items-center gap-2">
               <Gavel className="h-5 w-5 text-amber-700" />
@@ -490,7 +586,7 @@ export default function PactActionsCard({
           </div>
         ) : null}
 
-        {pact.canForceDisputeSplit ? (
+        {showDisputeFallbackActions && pact.canForceDisputeSplit ? (
           <div className="rounded-[24px] border border-rose-200 bg-rose-50 p-4 text-rose-950">
             <p className="font-semibold">Dispute timeout fallback is open</p>
             <p className="mt-2 text-sm text-rose-900">
@@ -512,11 +608,12 @@ export default function PactActionsCard({
         !pact.canCancelExpired &&
         !pact.canSubmitDeclaration &&
         !matchedResultWillAutoFinalize &&
-        !conflictingResultWillAutoDispute &&
-        !pact.canOpenUnansweredDeclarationDispute &&
+        !(showDisputeFallbackActions && conflictingResultWillAutoDispute) &&
+        !singleDeclarationReviewPending &&
+        !(showDisputeFallbackActions && pact.canOpenUnansweredDeclarationDispute) &&
         !deadlineOutcomeWillAutoSettle &&
-        !pact.canAdminResolve &&
-        !pact.canForceDisputeSplit ? (
+        !(showDisputeFallbackActions && pact.canAdminResolve) &&
+        !(showDisputeFallbackActions && pact.canForceDisputeSplit) ? (
           <p className="text-sm text-slate/70">There is no action to take from this wallet right now.</p>
         ) : null}
       </div>

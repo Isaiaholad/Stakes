@@ -15,7 +15,8 @@ import {
   normalizeUsername,
   readVaultSnapshot,
   rememberCreatedPactPendingIndex,
-  resolveUsernameToAddress
+  resolveUsernameToAddress,
+  storePactGameMetadata
 } from '../lib/pacts.js';
 import { useWalletStore } from '../store/useWalletStore.js';
 import { useToastStore } from '../store/useToastStore.js';
@@ -23,6 +24,10 @@ import { useToastStore } from '../store/useToastStore.js';
 const efootballPactTypeValue = 'eFootball';
 const chessPactTypeValue = 'Chess';
 const presets = [efootballPactTypeValue, chessPactTypeValue];
+const chessPlatforms = [
+  { value: 'chess.com', label: 'Chess.com', placeholder: 'KOLADEKKT' },
+  { value: 'lichess', label: 'Lichess', placeholder: 'isaiaholad' }
+];
 const chessColors = ['White', 'Black'];
 const customPactTypeValue = '__custom__';
 const minimumEventDurationMinutes = 5;
@@ -69,6 +74,10 @@ function isChessPactType(value) {
   return String(value || '').toLowerCase() === chessPactTypeValue.toLowerCase();
 }
 
+function getChessPlatformLabel(value) {
+  return chessPlatforms.find((platform) => platform.value === value)?.label || 'Chess.com';
+}
+
 export default function CreateChallengePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -86,6 +95,8 @@ export default function CreateChallengePage() {
     eventDurationMinutes: String(minimumEventDurationMinutes),
     declarationWindowMinutes: String(defaultDeclarationWindowMinutes),
     inGameUsername: '',
+    chessPlatform: chessPlatforms[0].value,
+    chessUsername: '',
     chessColor: chessColors[0]
   });
 
@@ -102,6 +113,7 @@ export default function CreateChallengePage() {
   const stablecoinDecimals = Number(vaultQuery.data?.decimals || 6);
   const tokenStep = stablecoinDecimals > 0 ? `0.${'0'.repeat(Math.max(stablecoinDecimals - 1, 0))}1` : '1';
   const resolvedTitle = form.pactType === customPactTypeValue ? form.customTitle.trim() : form.pactType;
+  const selectedChessPlatform = chessPlatforms.find((platform) => platform.value === form.chessPlatform) || chessPlatforms[0];
   const composedDescription = useMemo(() => {
     let desc = String(form.description || '').trim();
     if (isEfootballPactType(form.pactType) && form.inGameUsername.trim()) {
@@ -110,8 +122,19 @@ export default function CreateChallengePage() {
     if (isChessPactType(form.pactType) && form.chessColor) {
       desc = desc ? `${desc}\n\nCreator's chess color: ${form.chessColor}` : `Creator's chess color: ${form.chessColor}`;
     }
+    if (isChessPactType(form.pactType) && form.chessPlatform) {
+      desc = desc
+        ? `${desc}\nCreator's chess platform: ${getChessPlatformLabel(form.chessPlatform)}`
+        : `Creator's chess platform: ${getChessPlatformLabel(form.chessPlatform)}`;
+    }
+    if (isChessPactType(form.pactType) && form.chessUsername.trim()) {
+      const platformLabel = getChessPlatformLabel(form.chessPlatform);
+      desc = desc
+        ? `${desc}\nCreator's ${platformLabel} username: ${form.chessUsername.trim()}`
+        : `Creator's ${platformLabel} username: ${form.chessUsername.trim()}`;
+    }
     return desc;
-  }, [form.chessColor, form.description, form.pactType, form.inGameUsername]);
+  }, [form.chessColor, form.chessPlatform, form.chessUsername, form.description, form.pactType, form.inGameUsername]);
   const eventDurationSeconds = useMemo(() => Math.floor(requestedEventDurationMinutes * 60), [requestedEventDurationMinutes]);
   const declarationWindowSeconds = useMemo(
     () => Math.floor(requestedDeclarationWindowMinutes * 60),
@@ -141,6 +164,8 @@ export default function CreateChallengePage() {
     validationError = 'Enter a custom pact type.';
   } else if (isEfootballPactType(form.pactType) && !form.inGameUsername.trim()) {
     validationError = 'Please enter your in-game username for eFootball.';
+  } else if (isChessPactType(form.pactType) && !form.chessUsername.trim()) {
+    validationError = `Please enter your ${getChessPlatformLabel(form.chessPlatform)} username.`;
   } else if (isChessPactType(form.pactType) && !chessColors.includes(form.chessColor)) {
     validationError = 'Choose whether you will play White or Black.';
   } else if (!form.openToPublic && !counterpartyValue) {
@@ -181,9 +206,27 @@ export default function CreateChallengePage() {
         declarationWindowSeconds,
         stakeAmount: form.stakeAmount,
         decimals: vaultQuery.data.decimals
-      }),
+    }),
     onSuccess: async (result) => {
       if (result?.pactId) {
+        if (isChessPactType(form.pactType)) {
+          try {
+            await storePactGameMetadata(result.pactId, {
+              address,
+              gameType: 'Chess',
+              platform: form.chessPlatform,
+              chessUsername: form.chessUsername.trim(),
+              chessColor: form.chessColor
+            });
+          } catch (error) {
+            showToast({
+              variant: 'info',
+              title: 'Chess metadata not saved yet',
+              message: error?.message || 'Open the pact detail later to save chess verification details.'
+            });
+          }
+        }
+
         rememberCreatedPactPendingIndex(queryClient, {
           account: address,
           pactId: result.pactId,
@@ -308,25 +351,54 @@ export default function CreateChallengePage() {
         ) : null}
 
         {isChessPactType(form.pactType) ? (
-          <label className="block">
-            <FieldLabel tip="Choose your chess color for this pact. The joining player will confirm the opposite color before joining.">
-              Your chess color
-            </FieldLabel>
-            <select
-              value={form.chessColor}
-              onChange={(event) => setForm((current) => ({ ...current, chessColor: event.target.value }))}
-              className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none"
-            >
-              {chessColors.map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-xs text-slate/60">
-              Chess pacts use player color instead of an in-game username.
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <FieldLabel tip="Choose where this chess match will be played. The final result URL must come from this platform.">
+                Chess platform
+              </FieldLabel>
+              <select
+                value={form.chessPlatform}
+                onChange={(event) => setForm((current) => ({ ...current, chessPlatform: event.target.value }))}
+                className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none"
+              >
+                {chessPlatforms.map((platform) => (
+                  <option key={platform.value} value={platform.value}>
+                    {platform.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <FieldLabel tip={`Use the exact ${selectedChessPlatform.label} username that will appear in the final game URL.`}>
+                {selectedChessPlatform.label} username
+              </FieldLabel>
+              <input
+                value={form.chessUsername}
+                onChange={(event) => setForm((current) => ({ ...current, chessUsername: event.target.value }))}
+                placeholder={selectedChessPlatform.placeholder}
+                className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none placeholder:text-slate/40"
+              />
+            </label>
+            <label className="block">
+              <FieldLabel tip="Choose your chess color for this pact. The joining player will be locked to the opposite color.">
+                Your chess color
+              </FieldLabel>
+              <select
+                value={form.chessColor}
+                onChange={(event) => setForm((current) => ({ ...current, chessColor: event.target.value }))}
+                className="w-full rounded-[22px] border border-slate/10 bg-sand px-4 py-4 outline-none"
+              >
+                {chessColors.map((color) => (
+                  <option key={color} value={color}>
+                    {color}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-slate/60 sm:col-span-2">
+              Chess pacts use verified {selectedChessPlatform.label} game URLs from both players. Matching verified results settle automatically; conflicting verified results move into dispute/admin review.
             </p>
-          </label>
+          </div>
         ) : null}
 
         <div className="grid grid-cols-2 gap-3">

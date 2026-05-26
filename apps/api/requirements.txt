@@ -1,1 +1,2 @@
 efootball-ocr==1.0.0
+chess.com==3.13.0

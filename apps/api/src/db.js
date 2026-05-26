@@ -1,8 +1,95 @@
+import dns from 'node:dns';
 import pg from 'pg';
 import { apiConfig } from './config.js';
 
 let postgresPool = null;
 let databaseReadyPromise = null;
+let dnsFallbackInstalled = false;
+
+function shouldUseDnsResolveFallback(hostname) {
+  return /supabase\.(co|com)$/i.test(String(hostname || '').trim());
+}
+
+function installPostgresDnsFallback() {
+  if (dnsFallbackInstalled) {
+    return;
+  }
+
+  dnsFallbackInstalled = true;
+  const defaultLookup = dns.lookup.bind(dns);
+  dns.lookup = function lookupWithResolveFallback(hostname, options, callback) {
+    const cb = typeof options === 'function' ? options : callback;
+    const lookupOptions = typeof options === 'function' ? undefined : options;
+
+    defaultLookup(hostname, lookupOptions, (error, address, family) => {
+      if (!error || !cb || !shouldUseDnsResolveFallback(hostname)) {
+        cb?.(error, address, family);
+        return;
+      }
+
+      dns.resolve4(hostname, (resolveError, addresses) => {
+        if (resolveError || !addresses?.length) {
+          cb(error, address, family);
+          return;
+        }
+
+        if (lookupOptions?.all) {
+          cb(null, addresses.map((resolvedAddress) => ({ address: resolvedAddress, family: 4 })));
+          return;
+        }
+
+        cb(null, addresses[0], 4);
+      });
+    });
+  };
+}
+
+async function buildPostgresPoolConfig() {
+  const ssl = /supabase\.(co|com)|pooler\.supabase\.com/i.test(apiConfig.databaseUrl)
+    ? { rejectUnauthorized: false }
+    : undefined;
+  const baseConfig = {
+    connectionString: apiConfig.databaseUrl,
+    max: apiConfig.databasePoolMax,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    ssl
+  };
+
+  if (!ssl) {
+    return baseConfig;
+  }
+
+  try {
+    const parsedUrl = new URL(apiConfig.databaseUrl);
+    if (!shouldUseDnsResolveFallback(parsedUrl.hostname)) {
+      return baseConfig;
+    }
+
+    const addresses = await dns.promises.resolve4(parsedUrl.hostname);
+    const resolvedAddress = addresses?.[0];
+    if (!resolvedAddress) {
+      return baseConfig;
+    }
+
+    return {
+      host: resolvedAddress,
+      port: Number(parsedUrl.port || 5432),
+      user: decodeURIComponent(parsedUrl.username || ''),
+      password: decodeURIComponent(parsedUrl.password || ''),
+      database: decodeURIComponent(parsedUrl.pathname.replace(/^\/+/, '') || 'postgres'),
+      max: apiConfig.databasePoolMax,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+      ssl: {
+        ...ssl,
+        servername: parsedUrl.hostname
+      }
+    };
+  } catch {
+    return baseConfig;
+  }
+}
 
 export const postgresSchemaSql = `
   CREATE TABLE IF NOT EXISTS pacts (
@@ -70,6 +157,23 @@ export const postgresSchemaSql = `
     UNIQUE (pact_id, participant_address, evidence_uri)
   );
 
+  CREATE TABLE IF NOT EXISTS pact_game_metadata (
+    pact_id INTEGER PRIMARY KEY,
+    game_type TEXT NOT NULL DEFAULT '',
+    platform TEXT NOT NULL DEFAULT '',
+    creator_platform_username TEXT NOT NULL DEFAULT '',
+    counterparty_platform_username TEXT NOT NULL DEFAULT '',
+    creator_color TEXT NOT NULL DEFAULT '',
+    counterparty_color TEXT NOT NULL DEFAULT '',
+    game_url TEXT NOT NULL DEFAULT '',
+    verification_status TEXT NOT NULL DEFAULT '',
+    verification_source TEXT NOT NULL DEFAULT '',
+    verification_confidence REAL NOT NULL DEFAULT 0,
+    analysis_json TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS usernames (
     address TEXT PRIMARY KEY,
     username TEXT NOT NULL,
@@ -127,9 +231,13 @@ export const postgresSchemaSql = `
   CREATE INDEX IF NOT EXISTS idx_pacts_creator ON pacts (creator_address);
   CREATE INDEX IF NOT EXISTS idx_pacts_counterparty ON pacts (counterparty_address);
   CREATE INDEX IF NOT EXISTS idx_pacts_status ON pacts (raw_status, pact_id DESC);
+  CREATE INDEX IF NOT EXISTS idx_pacts_leaderboard_resolved ON pacts (raw_status, event_type, updated_at DESC, pact_id DESC);
+  CREATE INDEX IF NOT EXISTS idx_pacts_winner_status ON pacts (winner_address, raw_status);
   CREATE INDEX IF NOT EXISTS idx_participants_address ON pact_participants (participant_address, pact_id DESC);
   CREATE INDEX IF NOT EXISTS idx_declarations_pact ON pact_declarations (pact_id);
   CREATE INDEX IF NOT EXISTS idx_evidence_pact ON pact_evidence (pact_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_evidence_participant_pact ON pact_evidence (participant_address, pact_id);
+  CREATE INDEX IF NOT EXISTS idx_game_metadata_platform ON pact_game_metadata (platform, game_type);
   CREATE INDEX IF NOT EXISTS idx_messages_pact ON pact_messages (pact_id, created_at ASC);
   CREATE INDEX IF NOT EXISTS idx_sessions_address ON sessions (address, expires_at);
 
@@ -139,6 +247,7 @@ export const postgresSchemaSql = `
   ALTER TABLE pact_participants ENABLE ROW LEVEL SECURITY;
   ALTER TABLE pact_declarations ENABLE ROW LEVEL SECURITY;
   ALTER TABLE pact_evidence ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE pact_game_metadata ENABLE ROW LEVEL SECURITY;
   ALTER TABLE usernames ENABLE ROW LEVEL SECURITY;
   ALTER TABLE sync_state ENABLE ROW LEVEL SECURITY;
   ALTER TABLE admin_queue ENABLE ROW LEVEL SECURITY;
@@ -154,15 +263,8 @@ function convertPlaceholders(sql) {
 
 async function createPostgresPool() {
   const { Pool } = pg;
-  const pool = new Pool({
-    connectionString: apiConfig.databaseUrl,
-    max: apiConfig.databasePoolMax,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
-    ssl: /supabase\.(co|com)|pooler\.supabase\.com/i.test(apiConfig.databaseUrl)
-      ? { rejectUnauthorized: false }
-      : undefined
-  });
+  installPostgresDnsFallback();
+  const pool = new Pool(await buildPostgresPoolConfig());
 
   pool.on('error', (error) => {
     console.error('Postgres pool idle client error', {

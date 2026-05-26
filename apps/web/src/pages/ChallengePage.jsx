@@ -128,9 +128,12 @@ function ChallengePageContent({ id }) {
           cancelExpiredMutation={vm.cancelExpiredMutation}
           declareMutation={vm.declareMutation}
           analyzeEfootballResultMutation={vm.analyzeEfootballResultMutation}
+          analyzeChessResultMutation={vm.analyzeChessResultMutation}
+          gameMetadata={vm.gameMetadata}
           singleDeclarationDisputeMutation={vm.singleDeclarationDisputeMutation}
           mismatchDisputeMutation={vm.mismatchDisputeMutation}
           settleMutation={vm.settleMutation}
+          finalizeMatchedMutation={vm.finalizeMatchedMutation}
           resolveWinnerMutation={vm.resolveWinnerMutation}
           resolveSplitMutation={vm.resolveSplitMutation}
           forceDisputeSplitMutation={vm.forceDisputeSplitMutation}

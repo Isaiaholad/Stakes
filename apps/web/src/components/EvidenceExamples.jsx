@@ -5,13 +5,6 @@ const evidenceExamples = [
     src: '/media/examples/efootball-result-example.jpg',
     alt: 'Redacted eFootball final score example showing a clear full-time result',
     note: 'Final score and full-time state are visible.'
-  },
-  {
-    title: 'Chess result screen',
-    game: 'Chess',
-    src: '/media/examples/chess-result-example.jpg',
-    alt: 'Redacted Chess.com result example showing black wins by checkmate',
-    note: 'Winner text and match result are visible.'
   }
 ];
 

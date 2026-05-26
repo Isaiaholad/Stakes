@@ -11,14 +11,17 @@ import {
   cancelExpiredPact,
   cancelPact,
   forceSplitAfterDisputeTimeout,
+  finalizeMatchedResult,
   joinPact,
   openMismatchDispute,
   openUnansweredDeclarationDispute,
   readDisputeOpenedAt,
   readPactById,
+  readPactGameMetadata,
   readUsernameByAddress,
   settleAfterDeclarationWindow,
   readVaultSnapshot,
+  storePactGameMetadata,
   submitDisputeEvidence,
   submitWinner
 } from '../../lib/pacts.js';
@@ -169,6 +172,13 @@ export function usePactDetailPage(id, address) {
     refetchInterval: 15_000
   });
 
+  const gameMetadataQuery = useQuery({
+    queryKey: ['pact-game-metadata', pactId],
+    queryFn: () => readPactGameMetadata(pactId),
+    enabled: readsEnabled,
+    refetchInterval: 15_000
+  });
+
   const disputeOpenedAtQuery = useQuery({
     queryKey: ['pact-dispute-opened-at', pactId],
     queryFn: () => readDisputeOpenedAt(pactId),
@@ -185,7 +195,8 @@ export function usePactDetailPage(id, address) {
       queryClient.invalidateQueries({ queryKey: ['pact', pactId, address] }),
       queryClient.invalidateQueries({ queryKey: ['vault', address] }),
       queryClient.invalidateQueries({ queryKey: ['pact-messages', pactId, address] }),
-      queryClient.invalidateQueries({ queryKey: ['pact-evidence', pactId, address] })
+      queryClient.invalidateQueries({ queryKey: ['pact-evidence', pactId, address] }),
+      queryClient.invalidateQueries({ queryKey: ['pact-game-metadata', pactId] })
     ]);
   };
 
@@ -234,9 +245,25 @@ export function usePactDetailPage(id, address) {
 
       const res = await joinPact(address, pactId);
 
-      if (joinMetadata && typeof joinMetadata === 'string' && joinMetadata.trim()) {
+      const eventType = String(pactQuery.data?.eventType || '').toLowerCase();
+      if (eventType === 'chess' && joinMetadata && typeof joinMetadata === 'object') {
         try {
-          const eventType = String(pactQuery.data?.eventType || '').toLowerCase();
+          await storePactGameMetadata(pactId, {
+            address,
+            gameType: 'Chess',
+            platform: String(joinMetadata.platform || '').trim() || 'chess.com',
+            chessUsername: String(joinMetadata.chessUsername || '').trim(),
+            chessColor: String(joinMetadata.chessColor || '').trim()
+          });
+        } catch (error) {
+          showToast({
+            variant: 'info',
+            title: 'Chess metadata not saved yet',
+            message: error?.message || 'Save your chess username again before result verification.'
+          });
+        }
+      } else if (joinMetadata && typeof joinMetadata === 'string' && joinMetadata.trim()) {
+        try {
           const metadataLabel = eventType === 'chess'
             ? "Counterparty's chess color"
             : "Counterparty's in-game username";
@@ -283,6 +310,11 @@ export function usePactDetailPage(id, address) {
   const settleMutation = useMutation({
     mutationFn: () => settleAfterDeclarationWindow(address, pactId),
     ...createMutationHandlers('Declaration window settled', 'Settlement failed')
+  });
+
+  const finalizeMatchedMutation = useMutation({
+    mutationFn: () => finalizeMatchedResult(address, pactId),
+    ...createMutationHandlers('Matched result finalized', 'Finalization failed')
   });
 
   const disputeEvidenceMutation = useMutation({
@@ -458,6 +490,53 @@ export function usePactDetailPage(id, address) {
         variant: 'error',
         title: 'AI result failed',
         message: error?.message || 'Could not analyze the screenshot and submit the result.'
+      });
+    }
+  });
+
+  const analyzeChessResultMutation = useMutation({
+    mutationFn: async ({ gameUrl }) => {
+      const result = await analyzePactEvidence({
+        pactId,
+        address,
+        gameUrl
+      });
+      const winner = String(result?.winnerAddress || result?.winner || '').trim();
+      const validWinners = [
+        zeroAddress,
+        pactQuery.data?.creator?.toLowerCase(),
+        pactQuery.data?.counterparty?.toLowerCase()
+      ];
+
+      if (!winner || !validWinners.includes(winner.toLowerCase())) {
+        throw new Error('The chess platform could not confidently match this game URL to either pact participant.');
+      }
+
+      const receipt = await submitWinner(address, pactId, winner);
+      return {
+        result,
+        receipt
+      };
+    },
+    onSuccess: async ({ result, receipt }) => {
+      await refreshAll();
+      const analysis = result?.analysis || {};
+      showToast({
+        variant: 'success',
+        title: analysis.result === 'split' ? 'Draw submitted' : 'Chess result submitted',
+        ...buildTransactionToast(receipt, {
+          message:
+            analysis.result === 'split'
+              ? 'The chess platform verified a draw and submitted a split result on-chain.'
+              : `${analysis.winnerUsername || 'Winner'} verified from the chess platform and submitted on-chain.`
+        })
+      });
+    },
+    onError: (error) => {
+      showToast({
+        variant: 'error',
+        title: 'Chess verification failed',
+        message: error?.message || 'Could not verify this chess game URL.'
       });
     }
   });
@@ -678,9 +757,15 @@ export function usePactDetailPage(id, address) {
     const counterpartySubmitted = Boolean(pact.counterpartyDeclaration.submitted);
 
     if (!creatorSubmitted && !counterpartySubmitted) {
+      const isChess = String(pact.eventType || '').toLowerCase() === 'chess';
+      const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
       return {
         label: 'Settle no-result split',
-        helper: 'No result screenshot was uploaded before the deadline, so either joined participant can close this pact into a split payout.'
+        helper: isChess
+          ? 'No verified chess URL was submitted before the deadline, so either joined participant can close this pact into a split payout.'
+          : isEfootball
+            ? 'No result screenshot was uploaded before the deadline, so either joined participant can close this pact into a split payout.'
+            : 'No result was submitted before the deadline, so either joined participant can close this pact into a split payout.'
       };
     }
 
@@ -754,6 +839,7 @@ export function usePactDetailPage(id, address) {
     commentsQuery,
     walletSessionQuery,
     evidenceHistoryQuery,
+    gameMetadataQuery,
     disputeOpenedAtQuery,
     pact,
     protocol,
@@ -771,6 +857,7 @@ export function usePactDetailPage(id, address) {
     chatAuthenticated,
     loginWithPrivy,
     evidenceHistory,
+    gameMetadata: gameMetadataQuery.data || null,
     currentUserStoredEvidenceLinks,
     resolutionRef,
     setResolutionRef,
@@ -789,9 +876,11 @@ export function usePactDetailPage(id, address) {
     cancelExpiredMutation,
     declareMutation,
     analyzeEfootballResultMutation,
+    analyzeChessResultMutation,
     singleDeclarationDisputeMutation,
     mismatchDisputeMutation,
     settleMutation,
+    finalizeMatchedMutation,
     disputeEvidenceMutation,
     uploadDisputeFileMutation,
     resolveWinnerMutation,

@@ -7,11 +7,19 @@ import { join } from 'node:path';
 import { URL } from 'node:url';
 import { clearSessionCookie, createNonceChallenge, createSessionCookie, destroySession, getSessionFromRequest, verifySignatureAndCreateSession } from './auth.js';
 import { getChainTimeSnapshot, readPactAccessFromChain, readProtocolSnapshot, readUsernameByAddressFromChain, readVaultSnapshot, resolveUsernameFromChain, zeroAddress } from './chain.js';
+import {
+  detectChessPlatformFromUrl,
+  normalizeChessColor,
+  normalizeChessGameUrl,
+  normalizeChessPlatform,
+  normalizeChessComUsername,
+  verifyChessPlatformGameResult
+} from './chessCom.js';
 import { apiConfig, hasCoreContractsConfigured, hasUsernameRegistryConfigured, isAddressConfigured } from './config.js';
 import { all, ensureSyncState, get, getDatabase, nowIso, run } from './db.js';
 import { startIndexerLoop } from './indexer.js';
 import { startKeeperLoop } from './keeper.js';
-import { addressByUsername, addressIsParticipant, getPactAccessRecord, getPactById, listAdminQueuePacts, listOpenPacts, listPactEvidence, listPactMessages, listRecentPacts, usernameByAddress } from './pacts.js';
+import { addressByUsername, addressIsParticipant, getPactAccessRecord, getPactById, getPactGameMetadata, listAdminQueuePacts, listLeaderboard, listOpenPacts, listPactEvidence, listPactMessages, listRecentPacts, upsertPactGameMetadata, usernameByAddress } from './pacts.js';
 import { consumeRateLimit, getRequestIp } from './rateLimit.js';
 import { processAndUploadEvidenceFile } from './storage.js';
 import { Ollama } from 'ollama';
@@ -1066,6 +1074,23 @@ async function handleOpenPacts(url, response) {
   });
 }
 
+async function handleLeaderboard(url, response) {
+  const address = normalizeAddress(url.searchParams.get('address') || '');
+  const limit = parseLimit(url, 50);
+  const game = url.searchParams.get('game') || 'all';
+  const leaderboard = await withTimeout(
+    listLeaderboard({
+      game,
+      limit,
+      viewerAddress: address
+    }),
+    5_500,
+    'Leaderboard read'
+  );
+
+  writeJson(response, 200, leaderboard);
+}
+
 async function handlePactDetail(url, response, pactId) {
   const address = normalizeAddress(url.searchParams.get('address') || '');
   let protocol;
@@ -1647,6 +1672,183 @@ async function handleEvidenceMetadata(request, response) {
   });
 }
 
+function getPactRoleForAddress(pact, address) {
+  const normalizedAddress = normalizeAddress(address);
+  if (!pact || !normalizedAddress) {
+    return '';
+  }
+
+  if (normalizedAddress === normalizeAddress(pact.creator_address)) {
+    return 'creator';
+  }
+
+  if (normalizedAddress === normalizeAddress(pact.counterparty_address)) {
+    return 'counterparty';
+  }
+
+  return '';
+}
+
+function getOppositeChessColor(color) {
+  const normalized = normalizeChessColor(color);
+  if (normalized === 'White') {
+    return 'Black';
+  }
+  if (normalized === 'Black') {
+    return 'White';
+  }
+  return '';
+}
+
+function getCreatorChessColorFromDescription(description) {
+  const match = String(description || '').match(/creator(?:'s)?\s+chess\s+color\s*:\s*(white|black)/i);
+  return normalizeChessColor(match?.[1] || '');
+}
+
+function getChessPlatformLabel(platform) {
+  return normalizeChessPlatform(platform) === 'lichess' ? 'Lichess' : 'Chess.com';
+}
+
+function getCreatorChessPlatformFromDescription(description) {
+  const match = String(description || '').match(/creator(?:'s)?\s+chess\s+platform\s*:\s*(chess\.com|lichess)/i);
+  return normalizeChessPlatform(match?.[1] || '');
+}
+
+function getCreatorChessUsernameFromDescription(description) {
+  const match = String(description || '').match(/creator(?:'s)?\s+(?:chess\.com|lichess|chess\s+platform)\s+username\s*:\s*([^\n\r]+)/i);
+  return normalizeChessComUsername(match?.[1] || '');
+}
+
+async function assertGameMetadataWriteAllowed({ pactId, address }) {
+  const pact = await resolvePactAccessRecord(pactId);
+  if (!pact) {
+    const error = new Error('Pact not found.');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const role = getPactRoleForAddress(pact, address);
+  if (role) {
+    return { pact, role };
+  }
+
+  const protocol = await readProtocolSnapshot(address);
+  if (protocol.isAdmin || protocol.isArbiter) {
+    return { pact, role: 'admin' };
+  }
+
+  const error = new Error('Only pact participants or arbiters can update game metadata.');
+  error.statusCode = 403;
+  throw error;
+}
+
+async function handleGameMetadataGet(response, pactId) {
+  writeJson(response, 200, {
+    metadata: await getPactGameMetadata(Number(pactId))
+  });
+}
+
+async function handleGameMetadataPost(request, response, pactId) {
+  const body = await readJsonBody(request);
+  const address = normalizeAddress(body.address || '');
+  if (!address) {
+    writeJson(response, 400, { error: 'Connect your wallet before saving game metadata.' });
+    return;
+  }
+
+  try {
+    const { pact, role } = await assertGameMetadataWriteAllowed({ pactId: Number(pactId), address });
+    const existing = await getPactGameMetadata(Number(pactId));
+    const platformUsername = normalizeChessComUsername(body.chessUsername || body.platformUsername || body.username || '');
+    const chessColor = normalizeChessColor(body.chessColor || body.color || '');
+    const urlPlatform = detectChessPlatformFromUrl(body.gameUrl || '');
+    const requestedPlatform = normalizeChessPlatform(
+      body.platform ||
+      body.chessPlatform ||
+      existing?.platform ||
+      getCreatorChessPlatformFromDescription(pact.description) ||
+      urlPlatform ||
+      'chess.com'
+    );
+    const platformLabel = getChessPlatformLabel(requestedPlatform);
+    const normalizedGameUrl = body.gameUrl ? normalizeChessGameUrl(body.gameUrl, requestedPlatform) : '';
+    const patch = {
+      gameType: String(body.gameType || body.eventType || pact.event_type || existing?.gameType || 'Chess').trim(),
+      platform: requestedPlatform || 'chess.com'
+    };
+
+    if (body.gameUrl && !normalizedGameUrl) {
+      writeJson(response, 400, { error: 'Paste a valid Chess.com or Lichess game URL.' });
+      return;
+    }
+
+    if (urlPlatform && requestedPlatform && urlPlatform !== requestedPlatform) {
+      writeJson(response, 400, { error: `This pact is locked to ${platformLabel}. Paste a ${platformLabel} game URL.` });
+      return;
+    }
+
+    if (normalizedGameUrl) {
+      patch.gameUrl = normalizedGameUrl;
+    }
+
+    if (role === 'creator' || body.role === 'creator') {
+      if (!platformUsername) {
+        writeJson(response, 400, { error: `Your ${platformLabel} username is required.` });
+        return;
+      }
+      if (!chessColor) {
+        writeJson(response, 400, { error: 'Choose whether you will play White or Black.' });
+        return;
+      }
+      patch.creatorPlatformUsername = platformUsername;
+      patch.creatorColor = chessColor;
+      patch.counterpartyColor = existing?.counterpartyColor || getOppositeChessColor(chessColor);
+    } else if (role === 'counterparty' || body.role === 'counterparty') {
+      const creatorColor = existing?.creatorColor || getCreatorChessColorFromDescription(pact.description);
+      const creatorUsername = existing?.creatorPlatformUsername || getCreatorChessUsernameFromDescription(pact.description);
+      const lockedCounterpartyColor = creatorColor ? getOppositeChessColor(creatorColor) : chessColor;
+      if (!platformUsername) {
+        writeJson(response, 400, { error: `Your ${platformLabel} username is required.` });
+        return;
+      }
+      if (!lockedCounterpartyColor) {
+        writeJson(response, 400, { error: 'The creator must choose a chess color before the counterparty can join.' });
+        return;
+      }
+      if (chessColor && chessColor !== lockedCounterpartyColor) {
+        writeJson(response, 400, { error: `This pact locks you to ${lockedCounterpartyColor}.` });
+        return;
+      }
+      if (creatorColor && !existing?.creatorColor) {
+        patch.creatorColor = creatorColor;
+      }
+      if (creatorUsername && !existing?.creatorPlatformUsername) {
+        patch.creatorPlatformUsername = creatorUsername;
+      }
+      patch.counterpartyPlatformUsername = platformUsername;
+      patch.counterpartyColor = lockedCounterpartyColor;
+    }
+
+    const nextCreatorUsername = normalizeChessComUsername(
+      patch.creatorPlatformUsername ?? existing?.creatorPlatformUsername ?? getCreatorChessUsernameFromDescription(pact.description)
+    );
+    const nextCounterpartyUsername = normalizeChessComUsername(
+      patch.counterpartyPlatformUsername ?? existing?.counterpartyPlatformUsername ?? ''
+    );
+    if (nextCreatorUsername && nextCounterpartyUsername && nextCreatorUsername === nextCounterpartyUsername) {
+      writeJson(response, 400, { error: `Both players cannot use the same ${platformLabel} username.` });
+      return;
+    }
+
+    const metadata = await upsertPactGameMetadata(Number(pactId), patch);
+    writeJson(response, 200, { metadata });
+  } catch (error) {
+    writeJson(response, error?.statusCode || 400, {
+      error: error?.message || 'Could not save game metadata.'
+    });
+  }
+}
+
 async function handleAnalyzeEvidence(request, response, pactId) {
   const body = await readJsonBody(request);
   const session = await getSessionFromRequest(request);
@@ -1669,6 +1871,60 @@ async function handleAnalyzeEvidence(request, response, pactId) {
     protocol.isArbiter;
   if (!allowed) {
     writeJson(response, 403, { error: 'Only pact participants or arbiters can request AI evidence analysis.' });
+    return;
+  }
+
+  try {
+    if (String(pact.event_type || '').toLowerCase() === 'chess') {
+      const metadata = await getPactGameMetadata(Number(pactId));
+      const requestedPlatform = normalizeChessPlatform(
+        metadata?.platform ||
+        detectChessPlatformFromUrl(body.gameUrl || metadata?.gameUrl || '') ||
+        getCreatorChessPlatformFromDescription(pact.description) ||
+        'chess.com'
+      );
+      const verificationMetadata = {
+        ...metadata,
+        platform: requestedPlatform,
+        creatorPlatformUsername: metadata?.creatorPlatformUsername || getCreatorChessUsernameFromDescription(pact.description),
+        creatorColor: metadata?.creatorColor || getCreatorChessColorFromDescription(pact.description)
+      };
+      const chessResult = await verifyChessPlatformGameResult({
+        pact,
+        metadata: verificationMetadata,
+        gameUrl: body.gameUrl || metadata?.gameUrl || ''
+      });
+      const platformLabel = getChessPlatformLabel(requestedPlatform);
+
+      await upsertPactGameMetadata(Number(pactId), {
+        gameType: pact.event_type || metadata?.gameType || 'Chess',
+        platform: requestedPlatform || metadata?.platform || 'chess.com',
+        gameUrl: chessResult.gameUrl,
+        verificationStatus: 'verified',
+        verificationSource: chessResult.source,
+        verificationConfidence: chessResult.confidence,
+        analysis: chessResult
+      });
+      await storeEvidenceRecord({
+        pactId: Number(pactId),
+        participantAddress: requesterAddress,
+        uri: chessResult.gameUrl,
+        source: 'chess-url',
+        mimeType: 'text/uri-list',
+        originalName: `${platformLabel} verified result URL`
+      });
+
+      writeJson(response, 200, {
+        winner: chessResult.winnerAddress,
+        winnerAddress: chessResult.winnerAddress,
+        evidenceAnalyzed: chessResult.gameUrl,
+        analysis: chessResult
+      });
+      return;
+    }
+  } catch (error) {
+    const message = error?.message || 'Chess URL verification failed.';
+    writeJson(response, 400, { error: message });
     return;
   }
 
@@ -1751,6 +2007,11 @@ async function requestHandler(request, response) {
       return;
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/leaderboard') {
+      await handleLeaderboard(url, response);
+      return;
+    }
+
     if (request.method === 'GET' && /^\/api\/pacts\/\d+$/.test(url.pathname)) {
       await handlePactDetail(url, response, url.pathname.split('/').pop());
       return;
@@ -1801,8 +2062,18 @@ async function requestHandler(request, response) {
       return;
     }
 
+    if (request.method === 'GET' && /^\/api\/pacts\/\d+\/game-metadata$/.test(url.pathname)) {
+      await handleGameMetadataGet(response, url.pathname.split('/')[3]);
+      return;
+    }
+
     if (request.method === 'POST' && /^\/api\/pacts\/\d+\/messages$/.test(url.pathname)) {
       await handleMessagesPost(request, response, url.pathname.split('/')[3]);
+      return;
+    }
+
+    if (request.method === 'POST' && /^\/api\/pacts\/\d+\/game-metadata$/.test(url.pathname)) {
+      await handleGameMetadataPost(request, response, url.pathname.split('/')[3]);
       return;
     }
 

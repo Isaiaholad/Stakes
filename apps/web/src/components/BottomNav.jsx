@@ -1,10 +1,11 @@
-import { Compass, Home, PlusSquare, Wallet } from 'lucide-react';
+import { Compass, Home, PlusSquare, Trophy, Wallet } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 const items = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/create', label: 'Create', icon: PlusSquare },
   { to: '/explore', label: 'Explore', icon: Compass },
+  { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
   { to: '/vault', label: 'Vault', icon: Wallet }
 ];
 
@@ -17,7 +18,7 @@ export default function BottomNav() {
           to={to}
           end={to === '/'}
           className={({ isActive }) =>
-            `flex flex-1 flex-col items-center rounded-full px-3 py-2 text-xs font-medium transition ${
+            `flex flex-1 flex-col items-center rounded-full px-2 py-2 text-[0.68rem] font-medium transition ${
               isActive ? 'bg-ink text-sand' : 'text-slate/70'
             }`
           }

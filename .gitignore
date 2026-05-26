@@ -9,6 +9,7 @@ contracts/cache/
 .DS_Store
 .vite/
 *.log
+outputs/
 
 # Python/OCR local runtime
 apps/api/.venv/

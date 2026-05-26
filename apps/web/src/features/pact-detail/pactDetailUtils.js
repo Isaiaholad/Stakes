@@ -45,6 +45,7 @@ export { getReceiptStatusMessage };
 export function getStageMessage(pact) {
   const declarationWindowLabel = formatDuration(pact.declarationWindowSeconds);
   const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
+  const isChess = String(pact.eventType || '').toLowerCase() === 'chess';
   if (isEfootball) {
     return (
       {
@@ -55,6 +56,23 @@ export function getStageMessage(pact) {
         'Ready To Finalize': 'Both AI result submissions match. StakeWithFriends is ready to auto-settle the payout from the pact page.',
         'Needs Dispute': 'AI result submissions do not match. StakeWithFriends can move the pact into dispute for arbiter review.',
         'Settlement Due': 'The result window closed. The pact now settles into a split, a lone detected winner, or a dispute for conflicting submissions.'
+      }[pact.stage] || null
+    ) || getStageMessage({ ...pact, eventType: '' });
+  }
+
+  if (isChess) {
+    return (
+      {
+        Active: 'Both stakes are locked. When the chess match ends, each player should paste the Chess.com or Lichess game URL for verification.',
+        'Declaration Open': `The chess result window is open for ${declarationWindowLabel}.`,
+        'Result Submitted': 'One verified chess URL has been submitted. The other player can still submit their URL before the result window closes.',
+        'Review Period': 'Only one chess URL was submitted before the deadline. The missing side can raise a dispute during the 30-minute review period.',
+        'Ready To Finalize': 'Both chess URL submissions match. StakeWithFriends is ready to auto-settle the payout from the pact page.',
+        'Needs Dispute': 'Both chess URL submissions are verified, but they point to conflicting outcomes. StakesWithFriends can move this pact into dispute for admin review.',
+        'Settlement Due': 'The chess result window closed. This pact now needs the next settlement or dispute step.',
+        Disputed: 'This chess pact is in dispute. Submit proof links so an admin can review the conflicting URL evidence.',
+        Completed: 'This chess pact resolved on-chain and the winner can withdraw from the vault.',
+        'Split Completed': 'This chess pact resolved to a split payout in the vault.'
       }[pact.stage] || null
     ) || getStageMessage({ ...pact, eventType: '' });
   }
@@ -83,6 +101,7 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
   const eventEnded = referenceTime >= new Date(pact.eventEnd).getTime();
   const deadlineEnded = referenceTime > new Date(pact.submissionDeadline).getTime();
   const isEfootball = String(pact.eventType || '').toLowerCase() === 'efootball';
+  const isChess = String(pact.eventType || '').toLowerCase() === 'chess';
 
   if (pact.rawStatus === 'Resolved') {
     return {
@@ -131,10 +150,12 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
 
   if (!eventEnded) {
     return {
-      title: isEfootball ? 'Screenshot review opens when the pact ends' : 'Final result opens when the pact ends',
+      title: isEfootball ? 'Screenshot review opens when the pact ends' : isChess ? 'Chess URL submission opens when the pact ends' : 'Final result opens when the pact ends',
       message: isEfootball
         ? `Upload the final eFootball screenshot after the match window runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`
-        : `Participants can declare the result after the event duration runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`,
+        : isChess
+          ? `Both players can paste the Chess.com or Lichess game URL after the match window runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`
+          : `Participants can declare the result after the event duration runs out in ${formatCountdown(pact.eventEnd, referenceTime)}.`,
       shell: 'border-slate/10 bg-sand/65 text-slate/80',
       iconColor: 'text-slate/60',
       Icon: Flag
@@ -143,10 +164,12 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
 
   if (pact.stage === 'Declaration Open') {
     return {
-      title: isEfootball ? 'Final result waiting on screenshot' : 'Final result waiting on declarations',
+      title: isEfootball ? 'Final result waiting on screenshot' : isChess ? 'Chess URL verification is open' : 'Final result waiting on declarations',
       message: isEfootball
         ? `The pact has ended. Upload the final result screenshot so AI can detect and submit the winner during the ${formatDuration(pact.declarationWindowSeconds)} result window.`
-        : `The pact has ended. Either side can declare the winner during the ${formatDuration(pact.declarationWindowSeconds)} declaration window.`,
+        : isChess
+          ? 'Use the result panel below to paste the shared Chess.com or Lichess game link.'
+          : `The pact has ended. Either side can declare the winner during the ${formatDuration(pact.declarationWindowSeconds)} declaration window.`,
       shell: 'border-indigo-200 bg-indigo-50 text-indigo-950',
       iconColor: 'text-indigo-700',
       Icon: Flag
@@ -155,10 +178,12 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
 
   if (pact.stage === 'Result Submitted') {
     return {
-      title: isEfootball ? 'One AI result submitted' : 'One declaration received',
+      title: isEfootball ? 'One AI result submitted' : isChess ? 'One chess URL submitted' : 'One declaration received',
       message: isEfootball
         ? 'One AI result submission is on-chain. If the other side stays silent through the result window and grace period, that detected result wins automatically.'
-        : 'One side already declared. If the other side stays silent through the declaration window and grace period, that declaration wins automatically.',
+        : isChess
+          ? 'One verified chess URL is on-chain. The other player should submit their verified URL before the result window closes.'
+          : 'One side already declared. If the other side stays silent through the declaration window and grace period, that declaration wins automatically.',
       shell: 'border-indigo-200 bg-indigo-50 text-indigo-950',
       iconColor: 'text-indigo-700',
       Icon: Flag
@@ -168,7 +193,9 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
   if (pact.stage === 'Review Period') {
     return {
       title: 'Review period is open',
-      message: 'Only one declaration was submitted. The other side can still raise a dispute during the 30-minute review period before the lone declaration settles.',
+      message: isChess
+        ? 'Only one chess URL was submitted before the deadline. The missing side can still raise a dispute during the 30-minute review period.'
+        : 'Only one declaration was submitted. The other side can still raise a dispute during the 30-minute review period before the lone declaration settles.',
       shell: 'border-amber-200 bg-amber-50 text-amber-950',
       iconColor: 'text-amber-700',
       Icon: Gavel
@@ -178,7 +205,9 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
   if (pact.stage === 'Ready To Finalize') {
     return {
       title: 'Final result confirmed',
-      message: 'Both declarations match. StakeWithFriends now auto-settles the payout on-chain.',
+      message: isChess
+        ? 'Both verified chess URL submissions match. StakeWithFriends now auto-settles the payout on-chain.'
+        : 'Both declarations match. StakeWithFriends now auto-settles the payout on-chain.',
       shell: 'border-emerald-200 bg-mint/16 text-emerald-900',
       iconColor: 'text-emerald-700',
       Icon: Shield
@@ -188,7 +217,9 @@ export function getFinalResultStatus(pact, formatParticipant, referenceTime) {
   if (pact.stage === 'Needs Dispute') {
     return {
       title: 'Final result contested',
-      message: 'Declarations do not match. StakeWithFriends now moves the pact into dispute for arbiter review.',
+      message: isChess
+        ? 'Verified chess URL submissions do not match. StakeWithFriends now moves the pact into dispute for admin review.'
+        : 'Declarations do not match. StakeWithFriends now moves the pact into dispute for arbiter review.',
       shell: 'border-rose-200 bg-rose-50 text-rose-950',
       iconColor: 'text-rose-700',
       Icon: Gavel
