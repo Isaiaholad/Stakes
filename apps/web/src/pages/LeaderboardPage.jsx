@@ -158,6 +158,7 @@ export default function LeaderboardPage() {
     refetchOnWindowFocus: true
   });
   const leaderboard = query.data?.leaderboard || [];
+  const leaderboardUnavailable = query.data?.__readMeta?.source === 'degraded';
   const topPlayer = leaderboard[0] || null;
   const gameTabs = useMemo(() => {
     const availableGames = query.data?.availableGames || [];
@@ -206,7 +207,7 @@ export default function LeaderboardPage() {
             <div>
               <p className="font-semibold">Leaderboard is warming up</p>
               <p className="mt-2 leading-6">
-                The indexed ranking API is unavailable right now, so we are not falling back to slow live-chain scanning.
+                The indexed ranking API is temporarily unavailable. Retry in a moment while StakeWithFriends keeps the page responsive.
               </p>
               <button
                 type="button"
@@ -231,7 +232,7 @@ export default function LeaderboardPage() {
       <TopPlayerCard player={topPlayer} />
       {address ? <MyRankCard player={query.data?.viewerRank} /> : null}
 
-      {!query.isLoading && !leaderboard.length && !query.error ? (
+      {!query.isLoading && !leaderboard.length && !query.error && !leaderboardUnavailable ? (
         <EmptyState
           title="No completed pacts yet"
           body="Finish your first pact to enter the leaderboard. Wins, evidence, and streaks will move players up the board."

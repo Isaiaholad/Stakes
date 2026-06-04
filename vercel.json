@@ -8,8 +8,10 @@
     { "source": "/create", "destination": "/index.html" },
     { "source": "/explore", "destination": "/index.html" },
     { "source": "/vault", "destination": "/index.html" },
+    { "source": "/leaderboard", "destination": "/index.html" },
     { "source": "/admin", "destination": "/index.html" },
     { "source": "/connect", "destination": "/index.html" },
+    { "source": "/onboarding", "destination": "/index.html" },
     { "source": "/pact/:path*", "destination": "/index.html" }
   ]
 }

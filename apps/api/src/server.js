@@ -1078,15 +1078,32 @@ async function handleLeaderboard(url, response) {
   const address = normalizeAddress(url.searchParams.get('address') || '');
   const limit = parseLimit(url, 50);
   const game = url.searchParams.get('game') || 'all';
-  const leaderboard = await withTimeout(
-    listLeaderboard({
-      game,
-      limit,
-      viewerAddress: address
-    }),
-    5_500,
-    'Leaderboard read'
-  );
+
+  let leaderboard;
+  try {
+    leaderboard = await withTimeout(
+      listLeaderboard({
+        game,
+        limit,
+        viewerAddress: address
+      }),
+      5_500,
+      'Leaderboard read'
+    );
+  } catch (error) {
+    console.warn('Leaderboard read unavailable', {
+      error: error?.message || String(error || '')
+    });
+    leaderboard = {
+      leaderboard: [],
+      availableGames: [],
+      pointsModel: 'balanced-xp-v1',
+      updatedAt: new Date().toISOString(),
+      viewerRank: null,
+      unavailable: true,
+      error: 'The indexed leaderboard is temporarily unavailable.'
+    };
+  }
 
   writeJson(response, 200, leaderboard);
 }

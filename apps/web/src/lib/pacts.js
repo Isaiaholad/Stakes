@@ -1028,13 +1028,33 @@ async function fetchIndexedOpenPacts(currentAddress, limit) {
 }
 
 export async function readLeaderboard(options = {}) {
-  const payload = await fetchJson(
-    `/leaderboard${buildQueryString({
-      game: options.game || 'all',
-      limit: Number(options.limit || 50),
-      address: options.address || ''
-    })}`
-  );
+  let payload;
+
+  try {
+    payload = await fetchJson(
+      `/leaderboard${buildQueryString({
+        game: options.game || 'all',
+        limit: Number(options.limit || 50),
+        address: options.address || ''
+      })}`
+    );
+  } catch (error) {
+    return attachReadMeta(
+      {
+        leaderboard: [],
+        availableGames: [],
+        pointsModel: 'balanced-xp-v1',
+        updatedAt: new Date().toISOString(),
+        viewerRank: null,
+        unavailable: true,
+        errorMessage: error?.message || 'The indexed leaderboard API is temporarily unavailable.'
+      },
+      'degraded',
+      {
+        message: error?.message || 'The indexed leaderboard API is temporarily unavailable.'
+      }
+    );
+  }
 
   return attachReadMeta(
     {
@@ -1042,9 +1062,16 @@ export async function readLeaderboard(options = {}) {
       availableGames: Array.isArray(payload?.availableGames) ? payload.availableGames : [],
       pointsModel: payload?.pointsModel || 'balanced-xp-v1',
       updatedAt: payload?.updatedAt || '',
-      viewerRank: payload?.viewerRank || null
+      viewerRank: payload?.viewerRank || null,
+      unavailable: Boolean(payload?.unavailable),
+      errorMessage: payload?.error || ''
     },
-    'indexed'
+    payload?.unavailable ? 'degraded' : 'indexed',
+    payload?.unavailable
+      ? {
+          message: payload?.error || 'The indexed leaderboard API is temporarily unavailable.'
+        }
+      : {}
   );
 }
 

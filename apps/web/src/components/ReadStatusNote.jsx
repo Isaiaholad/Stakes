@@ -44,6 +44,17 @@ function getStatus(query, label) {
     };
   }
 
+  if (readSource === 'degraded') {
+    return {
+      tone: 'warning',
+      Icon: RefreshCcw,
+      title: `${label} temporarily unavailable`,
+      message:
+        query.data?.__readMeta?.message ||
+        'The indexed read API could not be reached. StakeWithFriends will retry without falling back to slow chain-wide scans.'
+    };
+  }
+
   if (query.isFetching && query.data) {
     return {
       tone: 'neutral',

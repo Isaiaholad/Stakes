@@ -146,6 +146,52 @@ describe('indexed pact API reads', () => {
     );
   }, apiReadTestTimeoutMs);
 
+  it('returns a degraded leaderboard payload when the indexed ranking API is unavailable', async () => {
+    global.fetch.mockRejectedValueOnce(new Error('leaderboard backend offline'));
+
+    const { readLeaderboard } = await loadPactsModule();
+    const result = await readLeaderboard({ game: 'all', limit: 50, address: '0xabc' });
+
+    expect(result).toMatchObject({
+      leaderboard: [],
+      availableGames: [],
+      pointsModel: 'balanced-xp-v1',
+      viewerRank: null,
+      unavailable: true,
+      errorMessage: 'leaderboard backend offline'
+    });
+    expect(result.__readMeta).toMatchObject({
+      source: 'degraded',
+      message: 'leaderboard backend offline'
+    });
+  });
+
+  it('treats a soft-unavailable leaderboard response as degraded data', async () => {
+    global.fetch.mockResolvedValueOnce(
+      jsonResponse({
+        leaderboard: [],
+        availableGames: [],
+        pointsModel: 'balanced-xp-v1',
+        viewerRank: null,
+        unavailable: true,
+        error: 'The indexed leaderboard is temporarily unavailable.'
+      })
+    );
+
+    const { readLeaderboard } = await loadPactsModule();
+    const result = await readLeaderboard({ game: 'all', limit: 50, address: '0xabc' });
+
+    expect(result).toMatchObject({
+      leaderboard: [],
+      unavailable: true,
+      errorMessage: 'The indexed leaderboard is temporarily unavailable.'
+    });
+    expect(result.__readMeta).toMatchObject({
+      source: 'degraded',
+      message: 'The indexed leaderboard is temporarily unavailable.'
+    });
+  });
+
   it('keeps a just-created open pact visible while the indexed API catches up', async () => {
     global.fetch
       .mockResolvedValueOnce(jsonResponse({ pacts: [] }))
